@@ -716,19 +716,6 @@
 /* Nothing to show: the note about it belongs in the middle of the sheet, not pinned to its top. */
 .now-lyrics:has(.now-empty){display:grid;place-content:center;text-align:center}
 .now-lyrics .now-empty{--lyric-focus:1}
-/* The phone has no sheet for the words: they stand in the same rectangle the cover is centred in
-   — the window above the player block, which page.tsx measures into --now-upper-top and
-   --now-upper-bottom — three big lines of them, with the cover gone from under them. It is the
-   same element either way: the focus and the way a line softens with its distance from the middle
-   still apply, only its box changes, so the rules below are read after the panel's. Anywhere else
-   this box is not shown at all: there the words keep their own panel and are read from the top
-   down. */
-.now-words{position:absolute;left:0;right:0;top:calc(-1 * var(--now-upper-top,0px));bottom:calc(-1 * var(--now-upper-bottom,0px));display:none;height:fit-content;max-height:calc(1.5em * 3);margin:auto 0;padding:0 4px;font-size:clamp(20px,6.6vw,28px);line-height:1.5;
-  /* The panel's own mask fades a tall column at both ends. Three lines have no ends to fade —
-     it would only wash the first and last of them — so the softening here is the lines' own
-     distance from the middle of the block, and nothing else. */
-  -webkit-mask-image:none;mask-image:none}
-.now-words p{margin:0}
 .now-row{display:flex;align-items:center;gap:11px;width:100%;padding:8px 10px;border-radius:12px;background:none;color:rgba(255,255,255,.82);text-align:left;transition:background .18s ease}
 .now-row:hover{background:rgba(255,255,255,.1)}
 .now-row.is-current{background:rgba(255,255,255,.17)}
@@ -775,19 +762,8 @@
      in: --now-lift is how far it has to rise for its own centre to land on that rectangle's (the
      room above its slot, less the room below), measured by the page. It slides out along the same
      line; the slot itself — what the words and the stand-in note are centred in — does not move. */
-  .now-art{translate:calc(var(--now-reveal,0) * (-50vw - 50% - 8px)) calc(-1 * var(--now-lift,0px));transition:translate .34s var(--ease-glass)}
+  .now-art{translate:0 calc(-1 * var(--now-lift,0px))}
   .now-stage.is-dragging .now-art{transition:none}
-  /* The words come with the swipe, so they are never read while the cover is still in the slot.
-     Three lines at a time they are a column read downwards from the first line, standing at the
-     top of the artwork's slot: a centred column would leave its beginning above the top of the
-     box, out of reach of the scroll, and the words sit higher up the window besides. */
-  .now-words{display:flex;flex-direction:column;opacity:0;visibility:hidden;
-    transition:opacity .3s ease,visibility 0s linear .3s}
-  .now-body.is-drawer-open .now-words{opacity:1;visibility:visible;transition-delay:0s,0s}
-  /* One line of stand-in text is not a column to read downwards: it takes the middle of the same
-     upper space, where the cover's own label would be. */
-  .now-words:has(.now-empty){padding:0 26px}
-  .now-words .now-empty{font-size:15px}
   /* The foot of the page, and the gesture written on it: an arrow that lifts and settles, saying
      the songs come from below and a pull brings them out. It is the phone's only sign that they
      exist — the wide layout has the corner switch for that — so it sits on the bottom edge, under
@@ -799,14 +775,6 @@
     transition:opacity .3s ease}
   .now-body.is-drawer-open ~ .now-sheet-hint,
   .now-body.is-drawer-open .now-sheet-hint{opacity:0}
-  /* The queue in the artwork's slot: the same rows the wide layout's sheet shows, cut to a few
-     lines and fading at both ends, because the slot is a window rather than a page. */
-  .now-queue-slot{align-items:stretch;text-align:left;font-size:var(--text-md);line-height:1.35;
-    max-height:calc(1.45em * 6);overflow-y:auto;
-    -webkit-mask-image:linear-gradient(to bottom,#0000 0,#000 14px,#000 calc(100% - 14px),#0000 100%);
-    mask-image:linear-gradient(to bottom,#0000 0,#000 14px,#000 calc(100% - 14px),#0000 100%)}
-  .now-queue-slot ol{list-style:none;margin:0;padding:0;width:100%;display:flex;flex-direction:column;gap:2px}
-  .now-queue-slot .now-row{padding:7px 8px}
 }
 /* The bob travels; it must not touch opacity, or the running animation would out-rank the rule
    above and the arrow would stay lit while the sheet it points at is already open. */

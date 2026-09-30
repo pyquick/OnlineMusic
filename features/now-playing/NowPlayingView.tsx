@@ -71,8 +71,6 @@ export default function NowPlayingView({
   const [axis, setAxis] = useState<"x" | "y" | null>(null);
 
   const lyricsRef = useRef<HTMLDivElement>(null);
-  /** The phone's words, which stand in the artwork's slot instead of in a sheet of their own. */
-  const wordsRef = useRef<HTMLDivElement>(null);
   /** The artwork's slot itself, whose distance from the top of the window sizes that space. */
   const artWrapRef = useRef<HTMLDivElement>(null);
   /** The song's title, whose top edge is where the player block begins. */
@@ -103,7 +101,7 @@ export default function NowPlayingView({
    */
   function paintLyrics() {
     lyricFrame.current = 0;
-    const sheet = wordsRef.current ?? lyricsRef.current;
+    const sheet = lyricsRef.current;
     if (!sheet) return;
     // The phone's words are read in the upper space as a whole rather than inside the artwork's own
     // box: the slot plus the room the centred column leaves above it. That room moves with the
@@ -154,7 +152,7 @@ export default function NowPlayingView({
   }, [compact, panel, lyrics.length]);
 
   useEffect(() => {
-    const sheet = wordsRef.current ?? lyricsRef.current;
+    const sheet = lyricsRef.current;
     if (!sheet || panel !== "lyrics") return;
     const schedule = () => { if (!lyricFrame.current) lyricFrame.current = window.requestAnimationFrame(paintLyrics); };
     paintLyrics();
@@ -264,16 +262,6 @@ export default function NowPlayingView({
           onPointerCancel={() => { gesture.current = null; setAxis(null); }}>
           <div className="now-art-wrap" ref={artWrapRef}>
             <div className={`now-art ${track && cover ? "" : "is-empty"}`}>{track && cover ? <img src={cover} alt="" /> : <Music2 size={72} />}</div>
-            {/* The artwork's slot is the phone's second screen: the songs that follow when the panel
-                is pulled up, and the words instead when the artwork itself is dragged aside. */}
-            {compact && (drawer || reveal > 0) && (panel === "lyrics"
-              ? <div className="now-lyrics now-words" ref={wordsRef}>{lyrics.map((line, index) => <p key={index}>{line}</p>)}{lyrics.length === 0 && <p className="now-empty">No lyrics for this song yet.</p>}</div>
-              : <div className="now-words now-queue-slot">
-                  <ol>
-                    {queue.map((item) => <li key={item.file.name}><button className={`now-row ${item.file.name === track?.file.name ? "is-current" : ""}`} onClick={() => onPick(item)}><span className="now-row-art">{coverSrc(item) ? <img src={coverSrc(item)} alt="" loading="lazy" decoding="async" /> : <Music2 size={14} />}</span><span className="now-row-copy"><strong>{item.title || item.file.name}</strong><small>{[item.artist, item.album].filter(Boolean).join(" — ") || "Unknown artist"}</small></span></button></li>)}
-                    {queue.length === 0 && <li className="now-empty">Nothing else in this project yet.</li>}
-                  </ol>
-                </div>)}
           </div>
           <div className="now-titles" ref={titlesRef}><h2>{track ? track.title || track.file.name : "Not Playing"}</h2></div>
           <div className="now-progress"><SeekBar media={media} remaining disabled={!track} ariaLabel="Seek" /></div>
@@ -285,7 +273,7 @@ export default function NowPlayingView({
             <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={onToggleLoop} disabled={!canStep} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={19} /></button>
           </div>
         </div>
-        {!compact && <div className="now-drawer" onFocus={() => setDrawer(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDrawer(false); }}>
+        <div className="now-drawer" onFocus={() => setDrawer(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDrawer(false); }}>
           <aside className={`now-queue ${panel === "lyrics" ? "is-lyrics" : ""}`}>
             {panel === "queue" && <header><div className="now-queue-copy"><h3>Continue playing</h3><p>{track?.album ? `From ${track.album}` : "From all songs"}</p></div></header>}
             {panel === "lyrics"
@@ -299,7 +287,7 @@ export default function NowPlayingView({
             <button role="tab" aria-selected={drawer && panel === "lyrics"} className={drawer && panel === "lyrics" ? "is-on" : ""} onClick={() => { setPanel("lyrics"); setDrawer(true); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button>
             <button role="tab" aria-selected={drawer && panel === "queue"} className={drawer && panel === "queue" ? "is-on" : ""} onClick={() => { setPanel("queue"); setDrawer(true); }} aria-label="Continue playing" title="Continue playing"><List size={17} /></button>
           </div>
-          </div>}
+        </div>
       </div>
       {/* The bottom edge says what the gesture is: pull up for what comes next. It is the phone's
           only affordance for the panel, so it has to be visible before anything is touched. */}
