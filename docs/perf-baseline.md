@@ -20,13 +20,18 @@ number is not finished.
 
 ## CSS
 
-| Item | Value |
-| --- | --- |
-| `app/globals.css` source | 98,448 B / 741 lines (was 105,864 B / 759 lines before the P0 dead-code pass) |
-| Compiled CSS | 73.9 kB raw → **14.1 kB gz** (single file, no splitting) |
-| Rule blocks | 716 (measured before the P0 pass) |
-| Literals | 1,079 px, 120 hex colours, 73 rgba(), 99 `border-radius`, 102 type declarations, 25 durations, 27 `cubic-bezier` (only 3 distinct curves), 13 `!important`, 17 ad-hoc z-index values |
-| Expensive properties | 35 `backdrop-filter`, 58 `box-shadow`, 24 `mask`, 4 `contain`, 0 `will-change` |
+| Item | P0 | P1 |
+| --- | --- | --- |
+| `app/globals.css` source | 105,864 B → 98,448 B (741 lines) | 99,790 B (761 lines, incl. the token block's comment) |
+| Compiled raw | 73,941 B | 67,726 B |
+| Compiled **gz** | 14,093 B | **13,221 B** (−6.2% vs P0) |
+| Rule blocks | 716 | 653 |
+| Literals | 1,079 px, 120 hex colours, 73 rgba(), 99 `border-radius`, 102 type declarations, 25 durations, 27 `cubic-bezier` (3 distinct curves), 13 `!important`, 17 ad-hoc z-index values | fonts/easings/type-sizes/z-layers are tokens now; the counts above still describe everything else |
+| Expensive properties | 35 `backdrop-filter`, 58 `box-shadow`, 24 `mask`, 4 `contain`, 0 `will-change` | unchanged |
+
+P1 note: the gz figure fell 6.2% in P1 (the collapsed font stacks more than pay for the token
+block). A phase that *adds* gz is acceptable when it buys a single source of truth — but it has to
+be said out loud rather than buried.
 
 ## Source size
 
@@ -74,6 +79,13 @@ biggest server-side win available, and it is measurable as request latency on `/
 | Long tasks | 0 over 50 ms during scroll, playback, or a slider drag |
 | Glass slider step (4 panes) | ≤ 25 ms |
 
+## Phase log
+
+| Phase | What it changed | Evidence |
+| --- | --- | --- |
+| P0 (commit `e4d388a`) | deleted confirmed dead code (TS + CSS) | build + container check; First Load JS unchanged at 123 kB |
+| P1 | design tokens: two font stacks, three easings, four shared type sizes, the document's z-layers; literals replaced 1:1 | **computed-style diff through the Chrome DevTools MCP: 195 elements × 57 properties on the studio view and the settings view, before vs after = 0 differing values**; console clean; live check that `--glass-blur` drives `backdrop-filter` (`blur(12.4px) saturate(1.7) url(#glass-edge-0)`) after four `ArrowRight` presses on the Blur slider |
+
 ## How to re-measure
 
 1. Build locally: `./node_modules/.bin/next build` (never `npx`, never a temp copy — both have
@@ -84,3 +96,8 @@ biggest server-side win available, and it is measurable as request latency on `/
    (the `:3000` container holds real data — never point a probe at its volume).
 4. Anything touching the glass material also needs the pixel probes (decoded displacement map,
    linear-ramp inversion, chirality test) before the phase can be called done.
+5. For a change that is supposed to be invisible, the cheap and rigorous test is the computed-style
+   snapshot: set `localStorage["onlinemusic-settings"]` to a fixed blob, reload, walk every element
+   and hash ~57 computed properties, switch to Settings and repeat, and diff the two runs. Two
+   back-to-back runs of the *same* build must be identical first, or the snapshot is not sound.
+   The before/after pair for P1 is kept in `/tmp/p1-snapshots/`.
