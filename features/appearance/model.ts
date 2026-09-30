@@ -94,7 +94,9 @@ export const GRADIENT_PRESETS = [
 ];
 
 export function tintChannels(rgb: string): [number, number, number] {
-  const [r, g, b] = rgb.split(/\s+/).map((part) => Number(part));
+  // A blank channel reads as absent, not as zero: "" is Number("") === 0, which would turn an
+  // empty tint into black glass — the same "unusable means the default" rule hexToRgb follows.
+  const [r, g, b] = rgb.split(/\s+/).map((part) => (part.trim() === "" ? NaN : Number(part)));
   return [Number.isFinite(r) ? r : 255, Number.isFinite(g) ? g : 255, Number.isFinite(b) ? b : 255];
 }
 

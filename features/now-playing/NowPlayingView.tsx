@@ -71,6 +71,8 @@ export default function NowPlayingView({
   const [axis, setAxis] = useState<"x" | "y" | null>(null);
 
   const lyricsRef = useRef<HTMLDivElement>(null);
+  /** The phone's words, which stand in the artwork's slot instead of in a sheet of their own. */
+  const wordsRef = useRef<HTMLDivElement>(null);
   /** True for the length of the settle after the layout flips between phone and desk. */
   const [handoff, setHandoff] = useState(false);
   const wasCompact = useRef(compact);
@@ -125,7 +127,7 @@ export default function NowPlayingView({
    */
   function paintLyrics() {
     lyricFrame.current = 0;
-    const sheet = lyricsRef.current;
+    const sheet = wordsRef.current ?? lyricsRef.current;
     if (!sheet) return;
     // The phone's words are read in the upper space as a whole rather than inside the artwork's own
     // box: the slot plus the room the centred column leaves above it. That room moves with the
@@ -176,7 +178,7 @@ export default function NowPlayingView({
   }, [compact, panel, lyrics.length]);
 
   useEffect(() => {
-    const sheet = lyricsRef.current;
+    const sheet = wordsRef.current ?? lyricsRef.current;
     if (!sheet || panel !== "lyrics") return;
     const schedule = () => { if (!lyricFrame.current) lyricFrame.current = window.requestAnimationFrame(paintLyrics); };
     paintLyrics();
@@ -280,12 +282,15 @@ export default function NowPlayingView({
           <button className="now-volume-icon" onClick={onToggleMute} aria-label={gain === 0 ? "Unmute" : "Mute"} title={gain === 0 ? "Unmute" : "Mute"}>{gain === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
         </div>
       </header>
-      <div className={`now-body ${drawer ? "is-drawer-open" : "is-drawer-closed"}`}>
+      <div className={`now-body ${drawer ? "is-drawer-open" : "is-drawer-closed"} ${panel === "lyrics" ? "is-lyrics-panel" : ""}`}>
         <div className={`now-stage ${axis ? "is-dragging" : ""}`} style={{ "--now-reveal": String(reveal) } as CSSProperties}
           onPointerDown={onGestureStart} onPointerMove={onGestureMove} onPointerUp={onGestureEnd}
           onPointerCancel={() => { gesture.current = null; setAxis(null); }}>
           <div className="now-art-wrap" ref={artWrapRef}>
             <div className={`now-art ${track && cover ? "" : "is-empty"}`}>{track && cover ? <img src={cover} alt="" /> : <Music2 size={72} />}</div>
+            {/* The words take the artwork's place — the phone's original reading of them, kept for
+                the words alone: what rises from the bottom now is the songs that come next. */}
+            {compact && panel === "lyrics" && <div className="now-lyrics now-words" ref={wordsRef}>{lyrics.map((line, index) => <p key={index}>{line}</p>)}{lyrics.length === 0 && <p className="now-empty">No lyrics for this song yet.</p>}</div>}
           </div>
           <div className="now-titles" ref={titlesRef}><h2>{track ? track.title || track.file.name : "Not Playing"}</h2></div>
           <div className="now-progress"><SeekBar media={media} remaining disabled={!track} ariaLabel="Seek" /></div>

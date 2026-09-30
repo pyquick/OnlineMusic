@@ -732,9 +732,20 @@
 @media(max-width:900px){.now-body{grid-template-columns:1fr;align-content:start;overflow-y:auto;row-gap:22px}.now-body.is-drawer-closed{grid-template-columns:1fr;row-gap:22px}.now-drawer{padding-top:54px}.now-switch{top:0;bottom:auto}.now-body.is-drawer-closed .now-queue{display:none}.now-queue{height:min(44vh,340px)}}
 @media(max-width:680px){.now-view{padding:16px 16px 22px}.now-art{width:min(34vh,300px)}.now-progress{position:static;left:auto;right:auto;bottom:auto}.now-transport .now-play{width:58px;height:58px}}
 
+/* The phone has no sheet for the words: they stand in the same rectangle the cover is centred in
+   — the window above the player block, which the view measures into --now-upper-top and
+   --now-upper-bottom — three big lines of them, with the cover gone from under them. It is the
+   same element either way: the focus and the way a line softens with its distance from the middle
+   still apply, only its box changes. */
+.now-words{position:absolute;left:0;right:0;top:calc(-1 * var(--now-upper-top,0px));bottom:calc(-1 * var(--now-upper-bottom,0px));display:none;height:fit-content;max-height:calc(1.5em * 3);margin:auto 0;padding:0 4px;font-size:clamp(20px,6.6vw,28px);line-height:1.5;
+  /* Three lines have no ends to fade, so the softening here is the lines' own distance from the
+     middle of the block, and nothing else. */
+  -webkit-mask-image:none;mask-image:none}
+.now-words p{margin:0}
+
 /* ── The small screen's fullscreen player ────────────────────────────────────
-   One column, art above controls, and the panel as a sheet that rises from the foot of the
-   screen over the bar rather than as a second column that has to be found behind a button. */
+   One column, art above controls, the words in the artwork's slot, and the songs that come next
+   as a sheet that rises from the foot of the screen over the bar. */
 /* The handle at the foot of the phone's stage: the sign of the pull, and a tap target for the
    same thing. The wide layout has the corner switch and shows none of it. */
 .now-sheet-hint{position:absolute;left:50%;translate:-50% 0;bottom:4px;display:grid;place-items:center;
@@ -787,6 +798,17 @@
      exist — the wide layout has the corner switch for that — so it sits on the bottom edge, under
      everything, and goes as soon as the panel does. Nothing glass rides on it, so its opacity may
      animate. */
+  /* The artwork yields its slot to the words and to nothing else: the queue rises as a sheet over
+     the transport instead, so the cover stays where it is while the songs are up. */
+  .now-body:not(.is-lyrics-panel) .now-art{translate:0 calc(-1 * var(--now-lift,0px))}
+  .now-body.is-lyrics-panel .now-art{translate:calc(var(--now-reveal,0) * (-50vw - 50% - 8px)) calc(-1 * var(--now-lift,0px));transition:translate .34s var(--ease-glass)}
+  /* The words carry their own place in the layout; the sheet is the queue's, so it steps aside. */
+  .now-body.is-lyrics-panel .now-drawer{display:none}
+  .now-words{display:flex;flex-direction:column;opacity:0;visibility:hidden;
+    transition:opacity .3s ease,visibility 0s linear .3s}
+  .now-body.is-drawer-open .now-words{opacity:1;visibility:visible;transition-delay:0s,0s}
+  .now-words:has(.now-empty){padding:0 26px}
+  .now-words .now-empty{font-size:15px}
   .now-sheet-hint{bottom:calc(env(safe-area-inset-bottom,0px) + 2px)}
 }
 /* The bob travels; it must not touch opacity, or the running animation would out-rank the rule
