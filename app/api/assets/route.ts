@@ -21,4 +21,39 @@ export async function GET(request:Request){
   }});
   return new Response(body,{headers:{"Content-Type":"application/x-ndjson; charset=utf-8","Cache-Control":"no-store","X-Accel-Buffering":"no"}});
 }
-export async function POST(request:Request){const u=user(request);if(!u)return NextResponse.json({error:"Sign in first"},{status:401});try{if(listAssets(u.email).length>=MAX_ASSETS)return NextResponse.json({error:"asset limit reached"},{status:507});const form=await request.formData(), file=form.get("file");if(!(file instanceof File))return NextResponse.json({error:"file required"},{status:400});const data=Buffer.from(await file.arrayBuffer()), dir=process.env.AUTH_DATA_DIR||path.join(process.cwd(),"data"), files=path.join(dir,"media");await fs.mkdir(files,{recursive:true});const id=crypto.randomUUID(), stored=path.join(files,id+path.extname(file.name));await fs.writeFile(stored,data);const metadata=JSON.parse(String(form.get("metadata")||"{}"));const asset=createAsset({name:file.name,ownerEmail:u.email,mediaKind:String(form.get("mediaKind")||"audio") as any,format:path.extname(file.name).slice(1).toLowerCase(),metadata:{...metadata,sizeBytes:file.size,mimeType:file.type},filePath:stored,hash:crypto.createHash("sha256").update(data).digest("hex")});return NextResponse.json({asset:assetIndexEntry(asset)},{status:201})}catch(e){if(e instanceof AssetValidationError)return NextResponse.json({error:e.message},{status:400});return NextResponse.json({error:"unable to upload asset"},{status:500})}}
+/**
+ * An upload: the file itself, its kind, and the tags read out of it on the client.
+ *
+ * Everything about the record goes through the same validator `PATCH` uses, and *before* the bytes
+ * are written — an upload that would produce an invalid asset is refused while it is still just a
+ * request, not after it has left a file behind. That was the gap: this route used to `JSON.parse`
+ * the metadata straight into the store, so a name of any length, an unknown `mediaKind` and a
+ * hundred tags all landed happily (measured: three such uploads answered 201 before this change
+ * and 400 after), and the `AssetValidationError` in the catch below could never fire.
+ */
+export async function POST(request:Request){
+  const u=user(request); if(!u)return NextResponse.json({error:"Sign in first"},{status:401});
+  try{
+    if(listAssets(u.email).length>=MAX_ASSETS)return NextResponse.json({error:"asset limit reached"},{status:507});
+    const form=await request.formData(), file=form.get("file");
+    if(!(file instanceof File))return NextResponse.json({error:"file required"},{status:400});
+    const metadata=JSON.parse(String(form.get("metadata")||"{}")) as Record<string,unknown>;
+    // Size and MIME come from the upload itself, never from what the client claims in the form.
+    const input=validateCreateInput({
+      name:file.name,
+      mediaKind:String(form.get("mediaKind")||"audio"),
+      format:path.extname(file.name).slice(1).toLowerCase(),
+      metadata:{...metadata,sizeBytes:file.size,mimeType:file.type},
+    });
+    const data=Buffer.from(await file.arrayBuffer());
+    const dir=process.env.AUTH_DATA_DIR||path.join(process.cwd(),"data"), files=path.join(dir,"media");
+    await fs.mkdir(files,{recursive:true});
+    const stored=path.join(files,crypto.randomUUID()+path.extname(file.name));
+    await fs.writeFile(stored,data);
+    const asset=createAsset({...input,ownerEmail:u.email,filePath:stored,hash:crypto.createHash("sha256").update(data).digest("hex")});
+    return NextResponse.json({asset:assetIndexEntry(asset)},{status:201});
+  }catch(e){
+    if(e instanceof AssetValidationError)return NextResponse.json({error:e.message},{status:400});
+    return NextResponse.json({error:"unable to upload asset"},{status:500});
+  }
+}

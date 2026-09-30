@@ -4,7 +4,13 @@ export const ASSET_STATUSES = ["draft","processing","ready","failed","archived"]
 export type AssetStatus = (typeof ASSET_STATUSES)[number];
 export const MEDIA_KINDS = ["audio","video","image","project"] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
-export const ACCEPTED_FORMATS: Record<MediaKind, readonly string[]> = { audio:["wav","mp3","flac","aiff","m4a","ogg"], video:["mp4","mov","webm"], image:["png","jpg","jpeg","webp"], project:["json"] };
+/**
+ * The formats the studio accepts, by kind. This is the server's copy of the same list the import
+ * dialog offers (`acceptedFormats` in app/page.tsx) and the one `fileKind()` sorts by. The two had
+ * been allowed to drift: the dialog takes .opus, .aac, .wma, .mkv and .avi, which the API would
+ * have refused the moment POST started validating. Keep them in step.
+ */
+export const ACCEPTED_FORMATS: Record<MediaKind, readonly string[]> = { audio:["wav","mp3","flac","aiff","m4a","ogg","oga","opus","aac","wma"], video:["mp4","mov","webm","mkv","avi"], image:["png","jpg","jpeg","webp"], project:["json"] };
 export const MAX_ASSETS=10000, MAX_NAME_LENGTH=200, MAX_DESCRIPTION_LENGTH=2000, MAX_TAGS=50, MAX_TAG_LENGTH=50, MAX_LYRICS_LENGTH=200000;
 export interface AssetMetadata { title?:string; artist?:string; album?:string; genre?:string; description?:string; tags?:string[]; durationMs?:number; sizeBytes?:number; mimeType?:string; lyrics?:string; [key:string]:unknown }
 export interface Asset { id:string; ownerEmail:string; name:string; mediaKind:MediaKind; format:string; status:AssetStatus; metadata:AssetMetadata; filePath:string; hash?:string; createdAt:string; updatedAt:string }

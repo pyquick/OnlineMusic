@@ -53,6 +53,7 @@ import { BAND_PERCENT_TO_PX, DEFAULT_APPEARANCE, DEFAULT_GLASS_BLUR, DEFAULT_GLA
 import { RangeControl } from "@/design-system/components/RangeControl";
 import { SeekBar, WaveformTrack } from "@/features/player";
 import { formatTime } from "@/shared/utilities/time";
+import { ApiError, api, apiStream } from "@/infrastructure/api/client";
 import BottomPill, { type PillItem } from "./bottom-pill";
 
 /**
@@ -368,9 +369,8 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/auth", { credentials: "include", cache: "no-store" })
-      .then((response) => response.ok ? response.json() : { user: null })
-      .then((data: { user?: { email: string; name: string } | null }) => { if (active) { setUser(data.user ?? null); setAuthReady(true); } })
+    api.get<{ user?: { email: string; name: string } | null }>("/api/auth")
+      .then((data) => { if (active) { setUser(data.user ?? null); setAuthReady(true); } })
       .catch(() => { if (active) setAuthReady(true); });
     return () => { active = false; };
   }, []);
@@ -469,8 +469,7 @@ export default function Home() {
       });
     };
     try {
-      const response = await fetch("/api/assets?index=1", { credentials: "include", cache: "no-store", signal: controller.signal });
-      if (!response.ok) return;
+      const response = await apiStream("/api/assets?index=1", { signal: controller.signal });
       setAssets([]);
       const reader = response.body?.getReader();
       if (!reader) {
@@ -1013,9 +1012,7 @@ export default function Home() {
   async function persistImportedAsset(localAsset: Asset, reload = true) {
     try {
       const form = new FormData(); form.append("file", localAsset.file); form.append("mediaKind", localAsset.kind); form.append("metadata", JSON.stringify({ title: localAsset.title, artist: localAsset.artist, album: localAsset.album, genre: localAsset.genre, coverData: localAsset.metadata.coverData, trackNo: localAsset.metadata.trackNo, lyrics: localAsset.metadata.lyrics }));
-      const response = await fetch("/api/assets", { method: "POST", credentials: "include", body: form });
-      if (!response.ok) return false;
-      const payload = await response.json() as { asset?: { id?: string; fileUrl?: string } };
+      const payload = await api.post<{ asset?: { id?: string; fileUrl?: string } }>("/api/assets", form);
       if (payload.asset?.id) { setAsset((current) => current?.file === localAsset.file ? { ...current, apiId: payload.asset!.id, url: payload.asset!.fileUrl || current.url } : current); if (reload) await loadRemoteAssets(); return true; }
     } catch { /* keep local preview usable while offline */ }
     return false;
@@ -1127,15 +1124,10 @@ export default function Home() {
     if (!asset) return;
     if (asset.apiId) {
       try {
-        const response = await fetch(`/api/assets/${encodeURIComponent(asset.apiId)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: asset.file.name,
-            metadata: { title: asset.title, artist: asset.artist, album: asset.album, genre: asset.genre, coverData: asset.metadata.coverData, gain, rate, eq, fadeIn, fadeOut },
-          }),
+        await api.patch(`/api/assets/${encodeURIComponent(asset.apiId)}`, {
+          name: asset.file.name,
+          metadata: { title: asset.title, artist: asset.artist, album: asset.album, genre: asset.genre, coverData: asset.metadata.coverData, gain, rate, eq, fadeIn, fadeOut },
         });
-        if (!response.ok) return;
       } catch {
         // Keep local metadata changes when the API is unavailable.
       }
@@ -1209,7 +1201,7 @@ export default function Home() {
       {!videoOverlay && <div className={`player glass-bar ${asset?.kind === "audio" && playing ? "audio-playing" : ""}`} data-glass-edge="3"><div className="now-playing"><button className="mini-cover-button" onClick={() => { setNowDrawer(false); setNowOpen(true); }} aria-label="Open now playing" title="Now playing"><span className={`mini-cover ${playing && asset?.kind === "audio" ? "is-playing" : ""}`}>{barCover ? <img src={barCover} alt="" /> : asset?.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="mini-cover-expand" aria-hidden="true"><Maximize2 size={13} /></span></span></button><div className="now-playing-copy"><strong className={asset && (asset.title || asset.file.name).length > 28 ? "is-long-title" : ""}><span>{asset?.title || "No asset selected"}</span></strong><small className={mediaError ? "is-error" : ""}>{mediaError || (asset ? `${asset.kind} · local preview` : "Import something to begin")}</small></div></div><div className="player-controls">{canStep && <button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={() => setShuffleOn((on) => !on)} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={15} /></button>}<button className="icon-button transport-step" onClick={() => playTrack(-1)} disabled={!canStep} aria-label="Previous song" title="Previous"><SkipBack size={16} fill="currentColor" /></button><button className={`player-button ${playStarting ? "is-starting" : ""}`} onClick={togglePlayback} aria-label={playing ? "Pause" : "Play"} disabled={!asset || asset.kind !== "audio"}>{playing ? <PauseGlyph size={26} /> : <PlayGlyph size={26} />}</button><button className="icon-button transport-step" onClick={() => playTrack(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={16} fill="currentColor" /></button>{canStep && <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={() => setLoopOn((on) => !on)} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={15} /></button>}<SeekBar media={audioRef} /></div><div className={`player-actions bar-cluster ${volumeOpen ? "is-volume-open" : ""}`}><button className={`glass-button bar-tool ${lyricsOpen ? "is-active" : ""}`} onClick={() => { setLyricsOpen((open) => !open); setProjectsOpen(false); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button><button className={`glass-button bar-tool ${projectsOpen ? "is-active" : ""}`} onClick={() => { setProjectsOpen((open) => !open); setLyricsOpen(false); }} aria-label="Projects" title="Projects"><List size={17} /></button><div className={`volume-cluster ${volumeOpen ? "is-open" : ""}`}><span className="volume-slider"><input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} tabIndex={volumeOpen ? 0 : -1} aria-hidden={!volumeOpen} onChange={(event) => setGain(Number(event.target.value))} aria-label="Volume" /></span><button className={`glass-button ${volumeOpen ? "is-active" : ""}`} onClick={() => setVolumeOpen((open) => !open)} aria-label="Volume" title="Volume">{gain === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div></div></div>}
 
 
-      {authOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAuthOpen(false)}><div className="auth-modal" role="dialog" aria-modal="true"><div className="modal-heading"><div><p className="eyebrow">Local account</p><h2>{authMode === "login" ? "Welcome back" : "Create your account"}</h2><p>Your account stays on this device. No external service required.</p></div><button className="icon-button" onClick={() => setAuthOpen(false)}><X size={18} /></button></div>{user ? <><div className="account-badge"><UserRound size={17} /> Signed in as {user.email}</div><button className="save-button" onClick={async () => { await fetch("/api/auth", { method: "DELETE", credentials: "include" }); setUser(null); setAuthOpen(false); }}>Sign out</button></> : <form className="auth-form" onSubmit={async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const email = String(data.get("email") || "").trim().toLowerCase(); const password = String(data.get("password") || ""); const name = String(data.get("name") || email.split("@")[0] || "User"); setAuthError(""); try { const response = await fetch("/api/auth", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: authMode, email, password, name }) }); const payload = await response.json(); if (!response.ok) { setAuthError(payload.error || "Sign-in failed"); return; } setUser(payload.user); setAuthOpen(false); } catch { setAuthError("Could not reach the server — try again in a moment."); } }}><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>Log in</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => setAuthMode("register")}>Register</button></div>{authMode === "register" && <label>Name<input name="name" placeholder="Your name" /></label>}<label>Email<input name="email" type="email" required placeholder="you@example.com" /></label><label>Password<input name="password" type="password" required minLength={6} placeholder="At least 6 characters" /></label>{authError && <p className="error-message">{authError}</p>}<button className="primary-button auth-submit" type="submit"><LockKeyhole size={15} /> {authMode === "login" ? "Log in" : "Create account"}</button></form>}</div></div>}
+      {authOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAuthOpen(false)}><div className="auth-modal" role="dialog" aria-modal="true"><div className="modal-heading"><div><p className="eyebrow">Local account</p><h2>{authMode === "login" ? "Welcome back" : "Create your account"}</h2><p>Your account stays on this device. No external service required.</p></div><button className="icon-button" onClick={() => setAuthOpen(false)}><X size={18} /></button></div>{user ? <><div className="account-badge"><UserRound size={17} /> Signed in as {user.email}</div><button className="save-button" onClick={async () => { await api.delete("/api/auth").catch(() => { /* signing out locally either way */ }); setUser(null); setAuthOpen(false); }}>Sign out</button></> : <form className="auth-form" onSubmit={async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const email = String(data.get("email") || "").trim().toLowerCase(); const password = String(data.get("password") || ""); const name = String(data.get("name") || email.split("@")[0] || "User"); setAuthError(""); try { const payload = await api.post<{ user: { email: string; name: string } }>("/api/auth", { mode: authMode, email, password, name }); setUser(payload.user); setAuthOpen(false); } catch (error) { setAuthError(error instanceof ApiError && !error.isNetwork ? error.message : "Could not reach the server — try again in a moment."); } }}><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>Log in</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => setAuthMode("register")}>Register</button></div>{authMode === "register" && <label>Name<input name="name" placeholder="Your name" /></label>}<label>Email<input name="email" type="email" required placeholder="you@example.com" /></label><label>Password<input name="password" type="password" required minLength={6} placeholder="At least 6 characters" /></label>{authError && <p className="error-message">{authError}</p>}<button className="primary-button auth-submit" type="submit"><LockKeyhole size={15} /> {authMode === "login" ? "Log in" : "Create account"}</button></form>}</div></div>}
 
       {modalOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setModalOpen(false)}><div className="upload-modal" role="dialog" aria-modal="true"><div className="modal-heading"><div><p className="eyebrow">Local import</p><h2>Bring media into the studio</h2><p>Files stay in this browser session until you choose to remove them.</p></div><button className="icon-button" onClick={() => setModalOpen(false)} aria-label="Close upload dialog"><X size={18} /></button></div><div className={`dropzone ${dragging ? "dragging" : ""}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={onDrop} onClick={chooseFile}><div className="drop-icon"><Upload size={23} /></div><h3>Drop audio or video here</h3><p>or <span>browse files</span> from your computer — pick several at once to import a full album</p><small>Maximum file size: 250 MB</small></div>{error && <p className="error-message">{error}</p>}<div className="format-list"><strong>Accepted formats</strong><div>{acceptedFormats.map((format) => <span key={format}>{format}</span>)}</div></div><input ref={inputRef} type="file" accept={acceptedExtensions} onChange={onInput} multiple hidden /></div></div>}
     </div>
