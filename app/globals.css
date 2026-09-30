@@ -518,7 +518,7 @@
 @media(max-width:900px){.player.glass-bar{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) auto}.player.glass-bar .player-actions{display:flex}}
 @media(max-width:680px){.player.glass-bar{grid-template-columns:minmax(0,1fr) auto}.player.glass-bar .player-actions{display:flex}.lyrics-panel{bottom:92px}.projects-panel{right:10px;bottom:92px;width:calc(100vw - 20px)}}
 @media(max-width:680px){.settings-page-head{flex-direction:column;align-items:stretch}.settings-card{padding:18px}}
-@media(prefers-reduced-motion:reduce){.ambient-orb,.glass-bar,.glass-bar.audio-playing::after,.glass-bar .mini-cover.is-playing::after,.lyrics-body p,.glass-panel,.settings-page,.player-button svg,.player-button.is-starting::after,.now-play.is-starting::after,.now-view{animation:none!important}}
+@media(prefers-reduced-motion:reduce){.ambient-orb,.glass-bar,.glass-bar.audio-playing::after,.glass-bar .mini-cover.is-playing::after,.lyrics-body p,.glass-panel,.settings-page,.player-button svg,.player-button.is-starting::after,.now-play.is-starting::after,.now-view,.now-sheet-hint{animation:none!important}}
 
 /* ── The small screen's navigation ───────────────────────────────────────────
    Below 680px the sidebar is not rendered at all: these five items are the whole of the
@@ -747,7 +747,10 @@
 
 /* ── The small screen's fullscreen player ────────────────────────────────────
    One column, art above controls, and the lyrics as a sheet that rises from the foot of the
-   screen over the bar rather than as a second column that has to be found behind a button. */
+   screen over the bar rather than as a second column that has to be found behind a button.
+   The sheet's own handle — the arrow at the foot of the stage — belongs to this layout alone;
+   the wide one opens the same panel from the corner switch. */
+.now-sheet-hint{display:none}
 @media(max-width:680px){
   .now-view{padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px)}
   .now-body{display:flex;flex-direction:column;flex:1;min-height:0;margin-top:12px;overflow:hidden;gap:12px;transition:none}
@@ -785,7 +788,18 @@
      upper space, where the cover's own label would be. */
   .now-words:has(.now-empty){padding:0 26px}
   .now-words .now-empty{font-size:15px}
+  /* The foot of the stage, and the gesture written on it: an arrow that lifts and settles, saying
+     the words are below the screen and a pull brings them out. It is the phone's only sign that
+     they exist — the wide layout has the corner switch for that — so it sits under the transport
+     and goes as soon as the sheet does. Nothing glass rides on it, so its opacity may animate. */
+  .now-sheet-hint{display:grid;place-items:center;margin-top:2px;color:rgba(255,255,255,.5);
+    animation:sheet-hint 2.6s ease-in-out infinite alternate;
+    transition:opacity .3s ease}
+  .now-body.is-drawer-open .now-sheet-hint{opacity:0}
 }
+/* The bob travels; it must not touch opacity, or the running animation would out-rank the rule
+   above and the arrow would stay lit while the sheet it points at is already open. */
+@keyframes sheet-hint{from{translate:0 0}to{translate:0 -5px}}
 
 /* ── The phone's top bar ─────────────────────────────────────────────────────
    Not the wide layout's capsule: a slab glued to a 390px window would only eat the page, and

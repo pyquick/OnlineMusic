@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { List, MessageSquareQuote, Music2, Repeat, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react";
+import { ChevronUp, List, MessageSquareQuote, Music2, Repeat, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react";
 import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyphs";
 import { SeekBar } from "@/features/player";
 import { coverSrc } from "@/shared/utilities/media";
@@ -170,13 +170,14 @@ export default function NowPlayingView({
   }, [panel, lyrics.length, compact]);
 
   /**
-   * The small screen's way to the lyrics. The sheet is a position rather than a switch: a downward
-   * drag anywhere on the stage that is not a control brings it up, and on the artwork a leftward
-   * drag does the same, carrying the artwork out of the window with it. Once it is up, a rightward
-   * drag on the stage pulls it back down and brings the artwork back in. The axis is locked in the
-   * first few pixels, so a scroll intent and a sideways swipe never fight, and the pointer is only
-   * captured once an axis is committed — capturing on the way down would swallow the progress
-   * slider's own drag.
+   * The small screen's way to the lyrics. The sheet is a position rather than a switch, and it is a
+   * *bottom* sheet: a slight upward drag anywhere on the stage that is not a control brings it out
+   * from the foot of the screen, and a downward drag puts it back — the direction the finger moves
+   * is the direction the sheet moves. On the artwork a leftward drag does the same, carrying the
+   * artwork out of the window with it. The arrow at the foot of the stage is what says so: it bobs
+   * while the sheet is down and fades as it comes up. The axis is locked in the first few pixels, so
+   * a scroll intent and a sideways swipe never fight, and the pointer is only captured once an axis
+   * is committed — capturing on the way down would swallow the progress slider's own drag.
    */
   const gesture = useRef<{ pointer: number; x: number; y: number; axis: "x" | "y" | null; onArt: boolean; from: number; time: number } | null>(null);
 
@@ -198,9 +199,12 @@ export default function NowPlayingView({
       setAxis(state.axis);
       try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
     }
-    // Only the direction that moves the sheet towards where it already is counts: down and to the
-    // left bring it up, to the right puts it back, and a drag the other way is simply held still.
-    const travel = state.axis === "y" ? Math.max(0, dy) : state.from > 0.5 ? -Math.max(0, dx) : state.onArt ? Math.max(0, -dx) : 0;
+    // Only the direction that moves the sheet towards where it already is counts: up (and, on the
+    // artwork, to the left) brings it out, down puts it back, and a drag the other way is simply
+    // held still. The finger and the sheet move the same way, which is what a bottom sheet does.
+    const travel = state.axis === "y"
+      ? (state.from > 0.5 ? -Math.max(0, dy) : Math.max(0, -dy))
+      : state.from > 0.5 ? -Math.max(0, dx) : state.onArt ? Math.max(0, -dx) : 0;
     setReveal(Math.max(0, Math.min(1, state.from + travel / 220)));
   }
 
@@ -216,12 +220,18 @@ export default function NowPlayingView({
     }
     const dx = event.clientX - state.x;
     const dy = event.clientY - state.y;
-    const speed = dy / Math.max(1, performance.now() - state.time);
+    // Up is the positive direction here, so the speed reads the same way the sheet moves.
+    const travel = -dy;
+    const speed = travel / Math.max(1, performance.now() - state.time);
     const width = event.currentTarget.clientWidth;
-    // The sheet keeps whatever the drag left it nearest to: a long drag, or a short quick one,
-    // decides, and a drag that only nudged it falls back to the side it started on.
+    // The sheet keeps whatever the drag left it nearest to: a long drag, or a slight quick one,
+    // decides, and a drag that only nudged it falls back to the side it started on. A slight
+    // upward flick is enough to bring it out — that is what the arrow promises — while closing
+    // asks for a real downward pull, so a hand resting on the stage cannot dismiss the words.
     const open = state.axis === "y"
-      ? state.from > 0.5 || dy > 64 || (dy > 24 && speed > 0.5)
+      ? state.from > 0.5
+        ? !(travel < -64 || (travel < -24 && speed < -0.5))
+        : travel > 48 || (travel > 18 && speed > 0.45)
       : state.from > 0.5
         ? !(dx > 64 || dx > width * 0.28)
         : state.onArt && (dx < -72 || dx < -(width * 0.28));
@@ -263,6 +273,9 @@ export default function NowPlayingView({
             <button className="transport-step" onClick={() => onStep(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={24} fill="currentColor" /></button>
             <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={onToggleLoop} disabled={!canStep} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={19} /></button>
           </div>
+          {/* The foot of the stage says what the gesture is: pull up for the words. It is the
+              phone's only affordance for them, so it has to be visible before anything is touched. */}
+          <span className="now-sheet-hint" aria-hidden="true"><ChevronUp size={18} /></span>
         </div>
         {!compact && <div className="now-drawer" onFocus={() => setDrawer(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDrawer(false); }}>
           <aside className={`now-queue ${panel === "lyrics" ? "is-lyrics" : ""}`}>
