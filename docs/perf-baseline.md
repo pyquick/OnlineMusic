@@ -91,6 +91,37 @@ biggest server-side win available, and it is measurable as request latency on `/
 | P5 | `infrastructure/api/client.ts` is the only way out to the API; `POST /api/assets` validates before it writes | three malformed uploads (260-char name, unknown `mediaKind`, 80 tags) answered 201 before and 400 after, while `.wav`/`.opus` still upload; then import → edit title → sign out → wrong password → sign in, all through the client |
 | P4.2 | the now-playing view became `features/now-playing` and took its own UI state with it (panel, drawer, gesture, lyric focus, the phone's measuring pass) | desktop whole document: 470 / 440 / 368 elements identical; compact inside `.now-view`: 54 elements, identical structure and **0 differing property values** in both the resting and swiped states, with `--now-reveal`, `--now-lift`, `--now-upper-top/bottom` and every `--lyric-focus` identical. Re-verified live on the deployed container: lyrics tab opens the drawer, the queue tab returns, close unmounts |
 
+## P6: the list, measured rather than assumed
+
+A synthetic library of **304 assets (4,427 DOM elements, 24,590 px of scroll)** was rendered in the
+Media Library view and scrolled end to end, one step per frame, on the :3001 dev instance:
+
+| | value |
+| --- | --- |
+| frames | 241 |
+| median | 16.6 ms |
+| p95 | 17.6 ms |
+| max | 17.8 ms |
+| frames over 20 ms | **0** |
+
+That is the same shape as the documented baseline with nineteen media elements on the page, so
+**no virtualisation and no `content-visibility` were added**: at this size the list is already
+frame-perfect, and the refactor's rule is to add cost only where a measurement asks for it.
+
+Caveat, stated rather than buried: the synthetic entries carry no covers, so no per-card artwork
+was fetched. That is a network question (the cards already use `loading="lazy"` and
+`decoding="async"`), not a rendering one, and it is what to measure first if a real library ever
+feels slow.
+
+## The checks that run on their own
+
+`npm run check` — types, the architecture guard (layering, cross-feature imports, cycles) and the
+unit tests — plus `npm run check:budget` for the built sizes. All of it uses what the repository
+already has: Node's test runner, the project's own TypeScript, and three scripts that read the
+source and the build. `.github/workflows/ci.yml` runs the lot on push and pull request. What is
+*not* automated is what cannot be: the computed-style diffs and the pixel probes the glass needs,
+which are described above and are manual by nature.
+
 ## How to re-measure
 
 1. Build locally: `./node_modules/.bin/next build` (never `npx`, never a temp copy — both have
