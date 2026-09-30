@@ -133,27 +133,34 @@ of it — the pill's bob, the play disc's swell — costs nothing. If a backdrop
 What is left, in order of measured value per unit of risk. **Nothing below is implemented.**
 (A — the stepped drift — is done; see *What was done about it* above.)
 
-### B. The clock stops invalidating the panes — 27 % → under 10 % during playback (estimated)
+### B. The seek row stops repainting a pane — 22 % → ~5-9 % during playback
 
-Three candidate changes, all small, to be measured one at a time:
+The mechanism is measured and narrow: four writes a second inside `.glass-bar` repaint that row, and
+repainting anything inside a `backdrop-filter` pane re-runs the pane's backdrop. Hiding just the row,
+with everything else playing, is 22 % → **4.0 %**. The obvious compositing remedies are ruled out by
+measurement — `contain: paint` wedged the renderer, `will-change: transform` took it to 52 % — so
+what remains are content changes, each with a price:
 
-1. **The labels update once a second, not four times.** `m:ss` cannot be read faster than that; the
-   seek hairline keeps its 4 Hz cadence through a **style write** (`--seek`), which does not fire the
-   sampler's `childList` observer the way a text write does.
-2. **The sampler coalesces its reaction.** `markMoved` currently re-stamps on every mutation; a short
-   debounce (or ignoring mutations that only touch panes' own clocks) keeps a 4 Hz UI from driving a
-   4 Hz full tick.
-3. Re-measure the bar's rim displacement afterwards: it was 8 points *while* the bar was being
-   repainted 4×/s, and may need no change at all once (1) and (2) land.
+| option | estimated cost | the price |
+| --- | --- | --- |
+| update the fill once a second instead of four times | ~9 % | a hairline that steps once a second (≈5 px/s on a two-minute track) |
+| draw the fill as a transformed element rather than a `--seek`-driven gradient | ~5 % | the seek row's markup and CSS restructured; the fill must stay aligned with track and thumb |
+| take the row out of the pane (beside the bar rather than inside it) | ~5 % | the design changes: the row is no longer part of the glass |
 
-### C. Re-measure, then decide about the surfaces not yet covered
+All three want the same verification: an A/B within one playing state, the median, and the row's
+text and fill checked afterwards — the fill's *appearance* is the thing that must survive.
 
-The now-playing view (open, with the sheet up), the phone layout with the pill, the video overlay
-playing, and a settings drag are all heavier than the states measured here and none of them has been
-measured. Each gets the same instrument and an A/B against the arm above it.
+### C. The other surfaces — done, with the gaps named
 
-### D. Keep it from coming back
+Measured (see the table above): the phone layout, the now view with its sheet, and the video overlay
+all sit in the 9.5-10 % band, i.e. at or near the phone layout's own idle. Still unmeasured: **real**
+video decode (the fixture cannot decode), a settings drag (which redraws every rim map), and the
+pill mid-drag. Each wants the same instrument and a within-state A/B.
 
-The instrument is macOS-only, so it cannot run in CI. It belongs with the other manual probes in
-`docs/perf-baseline.md`: the exact command, the blank-page floor, and the two budgets (idle ≤ 5 %,
-real-time ≤ 30 %), so the next person can reproduce the table above in ten minutes.
+### D. Keep it from coming back — done
+
+The instrument is macOS-only, so it cannot run in CI: it stays a manual probe, and the section above
+is the recipe (fix the viewport, pin the settings, verify the state from inside the page, A/B within
+one state, read the median, check the frame rate and visibility). The two budgets — idle ≤ 5 %,
+real-time ≤ 30 % — are stated in `docs/perf-baseline.md` next to the other manual checks, with the
+blank-page floor of 4 % they are judged against.

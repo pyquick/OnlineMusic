@@ -68,16 +68,23 @@ The `/api/assets/[id]/cover` route already serves artwork per card, so the data 
 need to live inside the index record — moving them to files next to the media (P5) is the single
 biggest server-side win available, and it is measurable as request latency on `/api/assets?index=1`.
 
-## Budget (proposed; warning first, gate later)
+## Budget
 
-| Metric | Budget |
-| --- | --- |
-| First Load JS on `/` | ≤ 123 kB now; ≤ 95 kB after P3 code-splitting |
-| Largest route chunk | ≤ 40 kB |
-| CSS (gz, one file) | ≤ 16 kB |
-| Interaction (scroll / drag) p95 | ≤ 20 ms |
-| Long tasks | 0 over 50 ms during scroll, playback, or a slider drag |
-| Glass slider step (4 panes) | ≤ 25 ms |
+| Metric | Budget | measured |
+| --- | --- | --- |
+| First Load JS on `/` | ≤ 135 kB gz (see `scripts/budget.mjs`) | 122.2 kB |
+| CSS (gz, one file) | ≤ 15 kB | 13.5 kB |
+| Largest chunk (gz) | ≤ 58 kB | 53.7 kB |
+| Interaction (scroll / drag) p95 | ≤ 20 ms | 17.6 ms |
+| Long tasks | 0 over 50 ms during scroll, playback, or a slider drag | 0 |
+| Glass slider step (4 panes) | ≤ 25 ms | ~21 ms |
+| **GPU, idle** (user's budget, 2026-09-30) | **≤ 5 %** of the device, against a 4 % blank-page floor | **5-6 %** after the stepped drift |
+| **GPU, real-time** | **≤ 30 %** | **22 %** playing; 9.5-10 % for the now view, the phone layout and the video overlay |
+
+The GPU figures come from a device-wide meter with no per-process attribution, so they are A/B
+deltas read as medians — the recipe, its failure modes and the full table are in
+`docs/gpu-measurement.md`. They cannot run in CI; they are re-measured by hand when the glass, the
+motion or the shell changes.
 
 ## Phase log
 
