@@ -51,6 +51,7 @@ import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyph
 import type { Asset, IndexEntry } from "@/shared/types/media";
 import { BAND_PERCENT_TO_PX, DEFAULT_APPEARANCE, DEFAULT_GLASS_BLUR, DEFAULT_GLASS_CLARITY, DEFAULT_GLASS_EDGE, DEFAULT_GLASS_RADIUS, DEFAULT_GLASS_REFRACTION, GRADIENT_PRESETS, MAX_GLASS_BLUR, SOLID_PRESETS, tintChannels, type Appearance } from "@/features/appearance";
 import { RangeControl } from "@/design-system/components/RangeControl";
+import { coverSrc } from "@/shared/utilities/media";
 import { SeekBar, WaveformTrack } from "@/features/player";
 import { formatTime } from "@/shared/utilities/time";
 import { ApiError, api, apiStream } from "@/infrastructure/api/client";
@@ -65,6 +66,9 @@ const AppearanceSettings = dynamic(() => import("@/features/appearance/Appearanc
 
 /** The precision editor is opened from the studio and covers the window; also loaded on demand. */
 const ParametersScreen = dynamic(() => import("@/features/parameters/ParametersScreen"), { ssr: false });
+
+/** The now-playing window is opened from the bar; loaded on demand like the other surfaces. */
+const NowPlayingView = dynamic(() => import("@/features/now-playing").then((module) => module.NowPlayingView), { ssr: false });
 
 const acceptedFormats =["MP3", "MP4", "M4A", "WAV", "FLAC", "OGG", "OGA", "OPUS", "AAC", "WMA", "WEBM", "MOV", "MKV", "AVI", "AIFF", "PNG", "JPG", "JPEG", "WEBP", "JSON"];
 const acceptedExtensions = acceptedFormats.map((format) => `.${format.toLowerCase()}`).join(",");
@@ -93,12 +97,6 @@ function indexEntryToAsset(entry: IndexEntry): Asset {
     artist: entry.artist || "", album: entry.album || "", genre: entry.genre || "",
     metadata, apiId: entry.id,
   };
-}
-
-/** Artwork for a card: an inline cover for local imports, a lazily fetched cover URL for stored assets. */
-function coverSrc(item: Asset) {
-  const value = item.metadata.coverData || item.metadata.coverUrl;
-  return typeof value === "string" && value ? value : "";
 }
 
 /** The first artwork found across a group of tracks. */
@@ -309,24 +307,11 @@ export default function Home() {
   const [shuffleOn, setShuffleOn] = useState(false);
   const [loopOn, setLoopOn] = useState(false);
   const [nowOpen, setNowOpen] = useState(false);
-  /** Which right-hand panel the now-playing view shows: the songs that follow, or the lyrics. */
-  const [nowPanel, setNowPanel] = useState<"queue" | "lyrics">("queue");
-  /**
-   * The right column is the corner switch's disclosure: the switch holding focus is what keeps the
-   * panel open, and the moment focus leaves it the column gives its width back to the stage — which
-   * is what puts the transport back in the middle of the window. The lit disc belongs to that held
-   * state and goes with it, so a view nobody is pointing at shows two plain icons and no selection
-   * at all — a click on the empty glass then leaves nothing behind, neither panel nor highlight.
-   */
-  const [nowDrawer, setNowDrawer] = useState(false);
   /** True for the length of the fall animation, so the view can leave before it unmounts. */
   const [nowClosing, setNowClosing] = useState(false);
   /** Held for the length of the play button's swell, so starting a track reads as an event. */
   const [playStarting, setPlayStarting] = useState(false);
   const wasPlaying = useRef(false);
-  /** Live progress of the small screen's lyrics gesture, 0 at rest and 1 fully open. */
-  const [nowReveal, setNowReveal] = useState(0);
-  const [nowAxis, setNowAxis] = useState<"x" | "y" | null>(null);
   /** The artwork's colour, as "r g b", for the now-playing backdrop. Empty when there is no cover. */
   const [nowTint, setNowTint] = useState("");
   const [mediaError, setMediaError] = useState("");
@@ -345,15 +330,6 @@ export default function Home() {
   /** False until the stored preferences have been applied, so a mount write cannot clobber them. */
   const [settingsReady, setSettingsReady] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
-  /** The fullscreen lyrics sheet, and the frame its focus is repainted on while it scrolls. */
-  const lyricsRef = useRef<HTMLDivElement>(null);
-  /** The phone's words, which stand in the artwork's slot instead of in a sheet of their own. */
-  const wordsRef = useRef<HTMLDivElement>(null);
-  /** The artwork's slot itself, whose distance from the top of the window sizes that space. */
-  const artWrapRef = useRef<HTMLDivElement>(null);
-  /** The song's title, whose top edge is where the player block begins. */
-  const titlesRef = useRef<HTMLDivElement>(null);
-  const lyricFrame = useRef(0);
   const glassEdgeRef = useRef<ReturnType<typeof attachGlassEdge> | null>(null);
   /** The WebGL rim, where the engine needs it; null while the SVG map has the job. */
   const glassWebglRef = useRef<GlassWebglHandle | null>(null);
@@ -576,22 +552,6 @@ export default function Home() {
     return () => { live = false; };
   }, [nowOpen, asset]);
 
-  useEffect(() => {
-    if (!nowOpen) return;
-    // Escape unwinds one layer at a time: the lyrics sheet first, the view itself after.
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (nowDrawer && compact) { setNowDrawer(false); setNowReveal(0); return; }
-      setNowClosing(true);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [nowOpen, nowDrawer, compact]);
-
-  // The sheet and the artwork are one position: whatever opens or closes the drawer — the swipe,
-  // Escape, focus landing on a row — the artwork steps out or comes back with it.
-  useEffect(() => { setNowReveal(nowDrawer ? 1 : 0); }, [nowDrawer]);
-
 
   useEffect(() => {
     if (!videoOverlay) return;
@@ -795,67 +755,6 @@ export default function Home() {
     return style as CSSProperties;
   }, [appearance]);
 
-  /**
-   * The small screen's way to the lyrics. The sheet is a position rather than a switch: a downward
-   * drag anywhere on the stage that is not a control brings it up, and on the artwork a leftward
-   * drag does the same, carrying the artwork out of the window with it. Once it is up, a rightward
-   * drag on the stage pulls it back down and brings the artwork back in. The axis is locked in the
-   * first few pixels, so a scroll intent and a sideways swipe never fight, and the pointer is only
-   * captured once an axis is committed — capturing on the way down would swallow the progress
-   * slider's own drag.
-   */
-  const nowGesture = useRef<{ pointer: number; x: number; y: number; axis: "x" | "y" | null; onArt: boolean; from: number; time: number } | null>(null);
-
-  function nowGestureStart(event: ReactPointerEvent<HTMLElement>) {
-    if (!compact) return;
-    const target = event.target as HTMLElement;
-    if (target.closest("input,button,.now-progress,.now-transport,.now-drawer")) return;
-    nowGesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, axis: null, onArt: Boolean(target.closest(".now-art-wrap")), from: nowDrawer ? 1 : nowReveal, time: performance.now() };
-  }
-
-  function nowGestureMove(event: ReactPointerEvent<HTMLElement>) {
-    const state = nowGesture.current;
-    if (!state || event.pointerId !== state.pointer) return;
-    const dx = event.clientX - state.x;
-    const dy = event.clientY - state.y;
-    if (!state.axis) {
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-      state.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-      setNowAxis(state.axis);
-      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
-    }
-    // Only the direction that moves the sheet towards where it already is counts: down and to the
-    // left bring it up, to the right puts it back, and a drag the other way is simply held still.
-    const travel = state.axis === "y" ? Math.max(0, dy) : state.from > 0.5 ? -Math.max(0, dx) : state.onArt ? Math.max(0, -dx) : 0;
-    setNowReveal(Math.max(0, Math.min(1, state.from + travel / 220)));
-  }
-
-  function nowGestureEnd(event: ReactPointerEvent<HTMLElement>) {
-    const state = nowGesture.current;
-    nowGesture.current = null;
-    if (!state) return;
-    setNowAxis(null);
-    // A tap while the sheet is up puts it away again, wherever it landed.
-    if (!state.axis) {
-      if (nowDrawer) setNowDrawer(false);
-      return;
-    }
-    const dx = event.clientX - state.x;
-    const dy = event.clientY - state.y;
-    const speed = dy / Math.max(1, performance.now() - state.time);
-    const width = event.currentTarget.clientWidth;
-    // The sheet keeps whatever the drag left it nearest to: a long drag, or a short quick one,
-    // decides, and a drag that only nudged it falls back to the side it started on.
-    const open = state.axis === "y"
-      ? state.from > 0.5 || dy > 64 || (dy > 24 && speed > 0.5)
-      : state.from > 0.5
-        ? !(dx > 64 || dx > width * 0.28)
-        : state.onArt && (dx < -72 || dx < -(width * 0.28));
-    setNowReveal(open ? 1 : 0);
-    if (open) { setNowPanel("lyrics"); setNowDrawer(true); }
-    else setNowDrawer(false);
-  }
-
   function goTo(nextView: View) {
     setView(nextView);
     setSidebarOpen(false);
@@ -925,80 +824,6 @@ export default function Home() {
       .filter(Boolean);
   }, [asset?.metadata.lyrics]);
 
-  /**
-   * The fullscreen lyrics are read through a focus: the line nearest the middle of the sheet is
-   * the sharp one, and the words soften as they run away from it, so the page reads as a column
-   * of light rather than a wall of text. Each line carries its own `--lyric-focus` (1 at the
-   * centre, 0 at the sheet's edge) and the stylesheet turns that into a blur — the panel behind
-   * them stays plain, which is the whole point of doing it on the words.
-   */
-  function paintLyrics() {
-    lyricFrame.current = 0;
-    const sheet = wordsRef.current ?? lyricsRef.current;
-    if (!sheet) return;
-    // The phone's words are read in the upper space as a whole rather than inside the artwork's
-    // own box: the slot plus the room the centred column leaves above it. That room moves with
-    // the window, so it is measured here, where the layout is being read anyway, and the
-    // stylesheet does the centring with it.
-    const box = sheet.getBoundingClientRect();
-    const middle = box.top + box.height / 2;
-    const reach = Math.max(110, box.height * 0.5);
-    for (const line of Array.from(sheet.children) as HTMLElement[]) {
-      const rect = line.getBoundingClientRect();
-      const distance = Math.min(1, Math.abs(rect.top + rect.height / 2 - middle) / reach);
-      line.style.setProperty("--lyric-focus", (1 - distance).toFixed(3));
-    }
-  }
-
-  /**
-   * The phone's stage is one rectangle: the window above the player block — from the top of the
-   * screen down to the top of the song's title, which is where that block begins. The artwork is
-   * centred in it, and so are the words that take the artwork's place, which is what the two gaps
-   * measured here are for: the room from that rectangle's top edge down to the artwork's slot, and
-   * the room from the slot's bottom down to the block. Nothing is guessed, because the slot's
-   * place is whatever the window and the title leave it; the stylesheet only does the arithmetic.
-   */
-  useEffect(() => {
-    if (!nowOpen || !compact) return;
-    const measure = () => {
-      const wrap = artWrapRef.current;
-      const titles = titlesRef.current;
-      const view = wrap?.closest(".now-view");
-      if (!wrap || !titles || !view) return;
-      // Everything is read against the view's own box, not the screen: the view rises through the
-      // window when it opens, and an absolute reading taken mid-animation would carry that slide.
-      // The view is fixed and inset:0, so once it lands its box is the screen and the two agree.
-      const viewTop = view.getBoundingClientRect().top;
-      const slotTop = wrap.getBoundingClientRect().top - viewTop;
-      const slotBottom = slotTop + wrap.offsetHeight;
-      const barTop = titles.getBoundingClientRect().top - viewTop;
-      wrap.style.setProperty("--now-upper-top", `${Math.round(slotTop)}px`);
-      wrap.style.setProperty("--now-upper-bottom", `${Math.round(barTop - slotBottom)}px`);
-      // The cover's own centre sits at the middle of its slot; the rise it needs is that centre
-      // taken from the middle of the rectangle.
-      wrap.style.setProperty("--now-lift", `${Math.round(slotTop + wrap.offsetHeight / 2 - barTop / 2)}px`);
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nowOpen, compact, nowPanel, lyricsLines.length]);
-
-  useEffect(() => {
-    const sheet = wordsRef.current ?? lyricsRef.current;
-    if (!sheet || !nowOpen || nowPanel !== "lyrics") return;
-    const schedule = () => { if (!lyricFrame.current) lyricFrame.current = window.requestAnimationFrame(paintLyrics); };
-    paintLyrics();
-    sheet.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
-    return () => {
-      sheet.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
-      if (lyricFrame.current) window.cancelAnimationFrame(lyricFrame.current);
-      lyricFrame.current = 0;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nowOpen, nowPanel, lyricsLines.length, compact]);
 
   function openImport() {
     setError("");
@@ -1185,7 +1010,32 @@ export default function Home() {
 
       {view === "projects" && metadataPanelOpen && asset && <><aside className="metadata-float" data-glass-edge=""><div className="metadata-float-header"><div><p className="eyebrow">Project metadata</p><h2>{asset.title || asset.file.name}</h2></div><button className="icon-button" onClick={() => setMetadataPanelOpen(false)}><X size={17} /></button></div>{(["title", "artist", "album", "genre"] as const).map((field) => <label key={field}>{field}<input value={asset[field]} placeholder={`Add ${field}`} onChange={(event) => updateMetadata(field, event.target.value)} /></label>)}<button className="cover-button" onClick={chooseCover}><Upload size={14} /> {coverSrc(asset) ? "Change cover image" : "Add cover image"}</button></aside><input ref={coverInputRef} type="file" accept="image/*" onChange={onCoverInput} hidden /></>}
 
-      {nowOpen && <section className={`now-view ${nowTint ? "has-tint" : ""} ${nowClosing ? "is-closing" : ""}`} onAnimationEnd={(event) => { if (event.target === event.currentTarget && nowClosing) { setNowOpen(false); setNowClosing(false); } }} style={nowTint ? ({ "--np-tint": nowTint } as CSSProperties) : undefined} aria-label="Now playing"><div className="now-backdrop" aria-hidden="true" /><header className="now-head"><button className="now-close" onClick={() => setNowClosing(true)} aria-label="Close now playing" title="Close"><X size={18} /></button><p className="now-kicker">Now playing</p><div className="now-volume"><input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} onChange={(event) => setGain(Number(event.target.value))} aria-label="Volume" /><button className="now-volume-icon" onClick={toggleMute} aria-label={gain === 0 ? "Unmute" : "Mute"} title={gain === 0 ? "Unmute" : "Mute"}>{gain === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}</button></div></header><div className={`now-body ${nowDrawer ? "is-drawer-open" : "is-drawer-closed"}`}><div className={`now-stage ${nowAxis ? "is-dragging" : ""}`} style={{ "--now-reveal": String(nowReveal) } as CSSProperties} onPointerDown={nowGestureStart} onPointerMove={nowGestureMove} onPointerUp={nowGestureEnd} onPointerCancel={() => { nowGesture.current = null; setNowAxis(null); }}><div className="now-art-wrap" ref={artWrapRef}><div className={`now-art ${nowAudio && barCover ? "" : "is-empty"}`}>{nowAudio && barCover ? <img src={barCover} alt="" /> : <Music2 size={72} />}</div>{compact && nowPanel === "lyrics" && <div className="now-lyrics now-words" ref={wordsRef}>{lyricsLines.map((line, index) => <p key={index}>{line}</p>)}{lyricsLines.length === 0 && <p className="now-empty">No lyrics for this song yet.</p>}</div>}</div><div className="now-titles" ref={titlesRef}><h2>{nowAudio ? nowAudio.title || nowAudio.file.name : "Not Playing"}</h2></div><div className="now-progress"><SeekBar media={audioRef} remaining disabled={!nowAudio} ariaLabel="Seek" /></div><div className="now-transport"><button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={() => setShuffleOn((on) => !on)} disabled={!canStep} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={19} /></button><button className="transport-step" onClick={() => playTrack(-1)} disabled={!canStep} aria-label="Previous song" title="Previous"><SkipBack size={24} fill="currentColor" /></button><button className={`now-play ${playStarting ? "is-starting" : ""}`} onClick={togglePlayback} disabled={!nowAudio} aria-label={nowAudio && playing ? "Pause" : "Play"}>{playing && nowAudio ? <PauseGlyph size={40} /> : <PlayGlyph size={40} />}</button><button className="transport-step" onClick={() => playTrack(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={24} fill="currentColor" /></button><button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={() => setLoopOn((on) => !on)} disabled={!canStep} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={19} /></button></div></div>{!compact && <div className="now-drawer" onFocus={() => setNowDrawer(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setNowDrawer(false); }}><aside className={`now-queue ${nowPanel === "lyrics" ? "is-lyrics" : ""}`}>{nowPanel === "queue" && <header><div className="now-queue-copy"><h3>Continue playing</h3><p>{nowAudio?.album ? `From ${nowAudio.album}` : "From all songs"}</p></div></header>}{nowPanel === "lyrics" ? <div className="now-lyrics" ref={lyricsRef}>{lyricsLines.map((line, index) => <p key={index}>{line}</p>)}{lyricsLines.length === 0 && <p className="now-empty">No lyrics for this song yet.</p>}</div> : <ol>{queueItems.map((item) => <li key={item.file.name}><button className={`now-row ${item.file.name === nowAudio?.file.name ? "is-current" : ""}`} onClick={() => { void playAsset(item, queueNames); }}><span className="now-row-art">{coverSrc(item) ? <img src={coverSrc(item)} alt="" loading="lazy" decoding="async" /> : <Music2 size={14} />}</span><span className="now-row-copy"><strong>{item.title || item.file.name}</strong><small>{[item.artist, item.album].filter(Boolean).join(" — ") || "Unknown artist"}</small></span></button></li>)}{queueItems.length === 0 && <li className="now-empty">Nothing else in this project yet.</li>}</ol>}</aside><div className="now-switch" role="tablist" aria-label="Right panel"><button role="tab" aria-selected={nowDrawer && nowPanel === "lyrics"} className={nowDrawer && nowPanel === "lyrics" ? "is-on" : ""} onClick={() => { setNowPanel("lyrics"); setNowDrawer(true); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button><button role="tab" aria-selected={nowDrawer && nowPanel === "queue"} className={nowDrawer && nowPanel === "queue" ? "is-on" : ""} onClick={() => { setNowPanel("queue"); setNowDrawer(true); }} aria-label="Continue playing" title="Continue playing"><List size={17} /></button></div></div>}</div></section>}
+      {nowOpen && <NowPlayingView
+        track={nowAudio}
+        cover={barCover}
+        lyrics={lyricsLines}
+        queue={queueItems}
+        queueNames={queueNames}
+        playing={playing}
+        playStarting={playStarting}
+        gain={gain}
+        canStep={canStep}
+        shuffleOn={shuffleOn}
+        loopOn={loopOn}
+        tint={nowTint}
+        closing={nowClosing}
+        compact={compact}
+        media={audioRef}
+        onClose={() => setNowClosing(true)}
+        onClosed={() => { setNowOpen(false); setNowClosing(false); }}
+        onTogglePlayback={togglePlayback}
+        onToggleMute={toggleMute}
+        onGain={setGain}
+        onStep={playTrack}
+        onToggleShuffle={() => setShuffleOn((on) => !on)}
+        onToggleLoop={() => setLoopOn((on) => !on)}
+        onPick={(item) => { void playAsset(item, queueNames); }}
+      />}
 
       {videoOverlay && <div className={`video-overlay ${videoControlsVisible ? "video-controls-visible" : ""}`} onMouseMove={(event) => { const nearBottom = window.innerHeight - event.clientY < 150; if (nearBottom) { setVideoControlsVisible(true); if (videoHideTimer.current) window.clearTimeout(videoHideTimer.current); videoHideTimer.current = window.setTimeout(() => setVideoControlsVisible(false), 1800); } else if (!event.currentTarget.querySelector(".video-player-dock:hover")) { setVideoControlsVisible(false); } }} onMouseLeave={() => { if (videoHideTimer.current) window.clearTimeout(videoHideTimer.current); setVideoControlsVisible(false); }}><video ref={videoRef} src={videoOverlay.url} autoPlay playsInline onPlay={() => setVideoPlaying(true)} onPause={() => setVideoPlaying(false)} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration)} onTimeUpdate={(event) => setVideoProgress(event.currentTarget.currentTime)} /><div className="video-shell-sidebar"><aside className="sidebar" data-glass-edge="">{/* Same rail styling as the main sidebar, but listing the media you can play. */}<div className="brand"><div className="brand-mark"><Sparkles size={17} /></div><span>onlineMusic</span></div><nav className="nav-group video-playlist"><p className="eyebrow">Songs &amp; videos</p>{playableAssets.map((item) => <button className={`nav-item ${videoOverlay.file.name === item.file.name ? "active" : ""}`} key={item.file.name} onClick={() => playFromVideoOverlay(item)} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}>{item.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="playlist-title">{item.title || item.file.name}</span></button>)}{playableAssets.length === 0 && <p className="playlist-empty">Nothing to play yet.</p>}</nav><div className="sidebar-bottom"><button className="profile profile-button" onClick={() => { setAuthError(""); setAuthOpen(true); }}><div className="avatar">{user?.name?.slice(0,2).toUpperCase() || "JL"}</div><div><strong>{user?.name || "Guest user"}</strong><small>{user ? user.email : "Sign in to sync"}</small></div></button></div></aside></div><div className={`video-dock-hit-zone ${videoControlsVisible ? "is-visible" : ""}`} onMouseEnter={() => setVideoControlsVisible(true)} onMouseLeave={() => window.setTimeout(() => setVideoControlsVisible(false), 250)}><div className={`video-player-dock ${videoControlsVisible ? "is-visible" : ""}`} data-glass-edge="3"><div className="now-playing"><span className="mini-cover"><FileVideo size={16} /></span><div className="now-playing-copy"><strong><span>{videoOverlay.title || videoOverlay.file.name}</span></strong><small>video · local preview</small></div></div><div className="player-controls"><button className="icon-button" onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }}><SkipBack size={16} /></button><button className="player-button" onClick={() => { const video = videoRef.current; if (!video) return; if (video.paused) void video.play(); else video.pause(); }}>{videoPlaying ? <PauseGlyph size={17} /> : <PlayGlyph size={17} />}</button><button className="icon-button" onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.min(videoDuration, videoRef.current.currentTime + 10); }}><SkipForward size={16} /></button><div className="progress-wrap"><span>{formatTime(videoProgress)}</span><input type="range" min="0" max={videoDuration || 1} step="0.1" value={videoProgress} style={{ "--seek": `${videoDuration ? (videoProgress / videoDuration) * 100 : 0}%` } as CSSProperties} onChange={(event) => { const value = Number(event.target.value); if (videoRef.current) videoRef.current.currentTime = value; setVideoProgress(value); }} /><span>{formatTime(videoDuration)}</span></div></div><div className="player-actions"><Volume2 size={17} /><input type="range" min="0" max="100" defaultValue="100" onChange={(event) => { if (videoRef.current) videoRef.current.volume = Number(event.target.value) / 100; }} /><button className="queue-button" onClick={() => { videoRef.current?.pause(); setVideoPlaying(false); setVideoOverlay(null); }}><X size={16} /> Close</button></div></div></div></div>}
 
@@ -1198,7 +1048,7 @@ export default function Home() {
 
       {compact && !videoOverlay && <BottomPill items={pillItems} current={view} onSelect={(id) => goTo(id as View)} onRaiseChange={setBubbleRaised} onBubbleMove={() => glassWebglRef.current?.refresh()} />}
 
-      {!videoOverlay && <div className={`player glass-bar ${asset?.kind === "audio" && playing ? "audio-playing" : ""}`} data-glass-edge="3"><div className="now-playing"><button className="mini-cover-button" onClick={() => { setNowDrawer(false); setNowOpen(true); }} aria-label="Open now playing" title="Now playing"><span className={`mini-cover ${playing && asset?.kind === "audio" ? "is-playing" : ""}`}>{barCover ? <img src={barCover} alt="" /> : asset?.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="mini-cover-expand" aria-hidden="true"><Maximize2 size={13} /></span></span></button><div className="now-playing-copy"><strong className={asset && (asset.title || asset.file.name).length > 28 ? "is-long-title" : ""}><span>{asset?.title || "No asset selected"}</span></strong><small className={mediaError ? "is-error" : ""}>{mediaError || (asset ? `${asset.kind} · local preview` : "Import something to begin")}</small></div></div><div className="player-controls">{canStep && <button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={() => setShuffleOn((on) => !on)} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={15} /></button>}<button className="icon-button transport-step" onClick={() => playTrack(-1)} disabled={!canStep} aria-label="Previous song" title="Previous"><SkipBack size={16} fill="currentColor" /></button><button className={`player-button ${playStarting ? "is-starting" : ""}`} onClick={togglePlayback} aria-label={playing ? "Pause" : "Play"} disabled={!asset || asset.kind !== "audio"}>{playing ? <PauseGlyph size={26} /> : <PlayGlyph size={26} />}</button><button className="icon-button transport-step" onClick={() => playTrack(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={16} fill="currentColor" /></button>{canStep && <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={() => setLoopOn((on) => !on)} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={15} /></button>}<SeekBar media={audioRef} /></div><div className={`player-actions bar-cluster ${volumeOpen ? "is-volume-open" : ""}`}><button className={`glass-button bar-tool ${lyricsOpen ? "is-active" : ""}`} onClick={() => { setLyricsOpen((open) => !open); setProjectsOpen(false); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button><button className={`glass-button bar-tool ${projectsOpen ? "is-active" : ""}`} onClick={() => { setProjectsOpen((open) => !open); setLyricsOpen(false); }} aria-label="Projects" title="Projects"><List size={17} /></button><div className={`volume-cluster ${volumeOpen ? "is-open" : ""}`}><span className="volume-slider"><input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} tabIndex={volumeOpen ? 0 : -1} aria-hidden={!volumeOpen} onChange={(event) => setGain(Number(event.target.value))} aria-label="Volume" /></span><button className={`glass-button ${volumeOpen ? "is-active" : ""}`} onClick={() => setVolumeOpen((open) => !open)} aria-label="Volume" title="Volume">{gain === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div></div></div>}
+      {!videoOverlay && <div className={`player glass-bar ${asset?.kind === "audio" && playing ? "audio-playing" : ""}`} data-glass-edge="3"><div className="now-playing"><button className="mini-cover-button" onClick={() => setNowOpen(true)} aria-label="Open now playing" title="Now playing"><span className={`mini-cover ${playing && asset?.kind === "audio" ? "is-playing" : ""}`}>{barCover ? <img src={barCover} alt="" /> : asset?.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="mini-cover-expand" aria-hidden="true"><Maximize2 size={13} /></span></span></button><div className="now-playing-copy"><strong className={asset && (asset.title || asset.file.name).length > 28 ? "is-long-title" : ""}><span>{asset?.title || "No asset selected"}</span></strong><small className={mediaError ? "is-error" : ""}>{mediaError || (asset ? `${asset.kind} · local preview` : "Import something to begin")}</small></div></div><div className="player-controls">{canStep && <button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={() => setShuffleOn((on) => !on)} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={15} /></button>}<button className="icon-button transport-step" onClick={() => playTrack(-1)} disabled={!canStep} aria-label="Previous song" title="Previous"><SkipBack size={16} fill="currentColor" /></button><button className={`player-button ${playStarting ? "is-starting" : ""}`} onClick={togglePlayback} aria-label={playing ? "Pause" : "Play"} disabled={!asset || asset.kind !== "audio"}>{playing ? <PauseGlyph size={26} /> : <PlayGlyph size={26} />}</button><button className="icon-button transport-step" onClick={() => playTrack(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={16} fill="currentColor" /></button>{canStep && <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={() => setLoopOn((on) => !on)} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={15} /></button>}<SeekBar media={audioRef} /></div><div className={`player-actions bar-cluster ${volumeOpen ? "is-volume-open" : ""}`}><button className={`glass-button bar-tool ${lyricsOpen ? "is-active" : ""}`} onClick={() => { setLyricsOpen((open) => !open); setProjectsOpen(false); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button><button className={`glass-button bar-tool ${projectsOpen ? "is-active" : ""}`} onClick={() => { setProjectsOpen((open) => !open); setLyricsOpen(false); }} aria-label="Projects" title="Projects"><List size={17} /></button><div className={`volume-cluster ${volumeOpen ? "is-open" : ""}`}><span className="volume-slider"><input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} tabIndex={volumeOpen ? 0 : -1} aria-hidden={!volumeOpen} onChange={(event) => setGain(Number(event.target.value))} aria-label="Volume" /></span><button className={`glass-button ${volumeOpen ? "is-active" : ""}`} onClick={() => setVolumeOpen((open) => !open)} aria-label="Volume" title="Volume">{gain === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div></div></div>}
 
 
       {authOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAuthOpen(false)}><div className="auth-modal" role="dialog" aria-modal="true"><div className="modal-heading"><div><p className="eyebrow">Local account</p><h2>{authMode === "login" ? "Welcome back" : "Create your account"}</h2><p>Your account stays on this device. No external service required.</p></div><button className="icon-button" onClick={() => setAuthOpen(false)}><X size={18} /></button></div>{user ? <><div className="account-badge"><UserRound size={17} /> Signed in as {user.email}</div><button className="save-button" onClick={async () => { await api.delete("/api/auth").catch(() => { /* signing out locally either way */ }); setUser(null); setAuthOpen(false); }}>Sign out</button></> : <form className="auth-form" onSubmit={async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const email = String(data.get("email") || "").trim().toLowerCase(); const password = String(data.get("password") || ""); const name = String(data.get("name") || email.split("@")[0] || "User"); setAuthError(""); try { const payload = await api.post<{ user: { email: string; name: string } }>("/api/auth", { mode: authMode, email, password, name }); setUser(payload.user); setAuthOpen(false); } catch (error) { setAuthError(error instanceof ApiError && !error.isNetwork ? error.message : "Could not reach the server — try again in a moment."); } }}><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>Log in</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => setAuthMode("register")}>Register</button></div>{authMode === "register" && <label>Name<input name="name" placeholder="Your name" /></label>}<label>Email<input name="email" type="email" required placeholder="you@example.com" /></label><label>Password<input name="password" type="password" required minLength={6} placeholder="At least 6 characters" /></label>{authError && <p className="error-message">{authError}</p>}<button className="primary-button auth-submit" type="submit"><LockKeyhole size={15} /> {authMode === "login" ? "Log in" : "Create account"}</button></form>}</div></div>}
