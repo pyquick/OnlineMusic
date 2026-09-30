@@ -264,36 +264,6 @@ function trackLabel(item: Asset, index: number) {
   return Number.isFinite(value) && value > 0 ? String(value) : String(index + 1);
 }
 
-const DB_NAME = "onlineMusic";
-const DB_STORE = "assets";
-
-function openAssetDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(DB_STORE, { keyPath: "key" });
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function saveLocalAsset(asset: Asset) {
-  const db = await openAssetDb();
-  await new Promise<void>((resolve, reject) => {
-    const request = db.transaction(DB_STORE, "readwrite").objectStore(DB_STORE).put({ key: asset.file.name, asset });
-    request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
-  });
-  db.close();
-}
-
-async function readLocalAssets(): Promise<Asset[]> {
-  const db = await openAssetDb();
-  return new Promise((resolve, reject) => {
-    const request = db.transaction(DB_STORE, "readonly").objectStore(DB_STORE).getAll();
-    request.onsuccess = () => { db.close(); resolve((request.result as { asset: Asset }[]).map((entry) => ({ ...entry.asset, url: URL.createObjectURL(entry.asset.file) }))); };
-    request.onerror = () => { db.close(); reject(request.error); };
-  });
-}
-
 /** The width below which the shell rearranges itself for a phone: navigation moves to the pill. */
 const COMPACT_QUERY = "(max-width: 680px)";
 
@@ -323,17 +293,12 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
   const [asset, setAsset] = useState<Asset | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [serverAssets, setServerAssets] = useState<{ id: string; fileUrl?: string; name: string }[]>([]);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [trimStart, setTrimStart] = useState(0);
-  const [trimEnd, setTrimEnd] = useState(100);
   const [gain, setGain] = useState(72);
   const [fadeIn, setFadeIn] = useState(0);
   const [fadeOut, setFadeOut] = useState(0);
@@ -559,21 +524,6 @@ export default function Home() {
   }
 
   useEffect(() => { void loadRemoteAssets(); }, [user?.email, authReady]);
-
-  useEffect(() => {
-    if (!uploading) return;
-    const timer = window.setInterval(() => {
-      setUploadProgress((current) => {
-        if (current >= 100) {
-          window.clearInterval(timer);
-          setUploading(false);
-          return 100;
-        }
-        return Math.min(current + 8, 100);
-      });
-    }, 90);
-    return () => window.clearInterval(timer);
-  }, [uploading]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -1107,7 +1057,7 @@ export default function Home() {
       const response = await fetch("/api/assets", { method: "POST", credentials: "include", body: form });
       if (!response.ok) return false;
       const payload = await response.json() as { asset?: { id?: string; fileUrl?: string } };
-      if (payload.asset?.id) { setAsset((current) => current?.file === localAsset.file ? { ...current, apiId: payload.asset!.id, url: payload.asset!.fileUrl || current.url } : current); setServerAssets((current) => [{ id: payload.asset!.id!, name: localAsset.file.name, fileUrl: payload.asset!.fileUrl }, ...current]); if (reload) await loadRemoteAssets(); return true; }
+      if (payload.asset?.id) { setAsset((current) => current?.file === localAsset.file ? { ...current, apiId: payload.asset!.id, url: payload.asset!.fileUrl || current.url } : current); if (reload) await loadRemoteAssets(); return true; }
     } catch { /* keep local preview usable while offline */ }
     return false;
   }
@@ -1152,8 +1102,6 @@ export default function Home() {
     });
     setAsset(imported[0]);
     setError(rejected.length > 0 ? `Imported ${imported.length} file${imported.length === 1 ? "" : "s"}. Skipped — ${rejected.join(" · ")}` : "");
-    setUploadProgress(0);
-    setUploading(true);
     setSaved(false);
     setModalOpen(rejected.length > 0);
     setPlaying(false);
