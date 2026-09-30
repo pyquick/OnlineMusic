@@ -1,0 +1,759 @@
+:root{--bg:#f6f7fb;--panel:#fff;--panel2:#f1f3f8;--ink:#171b2d;--muted:#7d8498;--line:#e8eaf1;--accent:#e5484d;--accent-2:#ff8f93;--green:#28ad82;--shadow:0 14px 40px rgba(53,57,95,.08)}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif}button,input{border:0;font:inherit;color:inherit}button{cursor:pointer}/* The page's backdrop lives on its own fixed element rather than on the shell, so it holds still
+   while the page scrolls over it, and it is a real element rather than a ::before because the
+   WebGL path walks the element tree into its raster — a backdrop painted any other way would be
+   missing behind every rim band. Layer one is the optional scrim over a photo, layer two the
+   chosen colour, gradient or image. --shell-luma is that backdrop's measured brightness, and the
+   two page inks ride it so a dark background does not leave dark type sitting on it — the same
+   move lib/inkSampler.ts makes per pane. */
+.shell-bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-color:var(--shell-base,#f6f7fb);
+  background-image:var(--shell-scrim,linear-gradient(#0000,#0000)),var(--shell-bg-image,linear-gradient(120deg,#f8f9fc 0%,#f2f3fa 55%,#fbfbff 100%));
+  background-size:cover,cover;background-position:center,center;background-repeat:no-repeat,no-repeat}
+/* A photograph behind the panes is already a busy backdrop; the drifting orbs would only muddy it. */
+.studio-shell[data-bg="image"] .ambient-orb{opacity:.2}
+/* The one switch the theme keeps for the browser itself: a range input, a checkbox and a
+   scrollbar are painted by the engine, not by the page, and color-scheme is the only thing that
+   tells them which way round to draw. The roles below ride the backdrop's own brightness; this
+   is the same decision, made once, for everything the page does not paint. */
+.studio-shell[data-theme="dark"]{color-scheme:dark}
+.studio-shell{min-height:100vh;padding-bottom:92px;display:flex;
+  /* ── The theme system ────────────────────────────────────────────────────────
+     This block is the one place the theme lives. --theme-t is how dark the backdrop is: 0 at
+     the paper-white default and 1 by the time it is mid-dark, so a visitor who never changes
+     the background sees exactly the colours that were always there. Every role below is that
+     same ramp, and that is what lets Ink, Navy or Graphite flip the whole studio at once — the
+     page's own type, the cards and fields it paints, the accent and the washes it is worn as,
+     and the small frosted chips on the bar. Nothing outside this block picks a colour of its
+     own: if a control needs one, it takes a role from here. */
+  --theme-t:calc((.96 - var(--shell-luma,.96)) * 165%);
+  /* Type on the backdrop itself, and type inside a card — they are the same role because a card
+     is paper on a light backdrop and a dark slate on a dark one, so whatever reads --ink or
+     --muted comes along with the surface it sits on. */
+  --page-ink:color-mix(in srgb,#fff var(--theme-t),#171b2d);
+  --page-muted:color-mix(in srgb,#fff var(--theme-t),#8a90a2);
+  --ink:color-mix(in srgb,#fff var(--theme-t),#171b2d);
+  --muted:color-mix(in srgb,#fff var(--theme-t),#7d8498);
+  --ink-soft:color-mix(in srgb,#fff var(--theme-t),#8a90a2);
+  --panel:color-mix(in srgb,#0f1219 var(--theme-t),#fff);
+  --panel2:color-mix(in srgb,#161a24 var(--theme-t),#f1f3f8);
+  --line:color-mix(in srgb,#2b3142 var(--theme-t),#e8eaf1);
+  /* The accent and the two ways it is worn: as ink on a surface, and as the wash behind a chip,
+     a selected row or a drop target — a pale tint on paper, the accent itself let through on a
+     dark theme, where the ink lifts with it. */
+  --accent-ink:color-mix(in srgb,#ffb3b6 var(--theme-t),#d6404a);
+  --accent-soft:color-mix(in srgb,rgba(229,72,77,.18) var(--theme-t),#ffecec);
+  /* The small frosted tiles that ride on the bar: a whitish chip on paper, a dark one on a dark
+     theme, with the ink to match either way. */
+  --chip:color-mix(in srgb,rgba(255,255,255,.1) var(--theme-t),rgba(255,255,255,.5));
+  --chip-line:color-mix(in srgb,rgba(255,255,255,.08) var(--theme-t),rgba(255,255,255,.24));
+  --chip-ink:color-mix(in srgb,#e7eaf5 var(--theme-t),#494e66);
+  --chip-ink-2:color-mix(in srgb,#cfd5e8 var(--theme-t),#3d4258);
+  color:var(--ink);
+  /* One height for the navigation pill, so the bar above it, the sheets above that and the
+     page's own bottom padding cannot drift apart from one another. */
+  --pill-h:64px}
+.sidebar{width:250px;flex:none;border-right:1px solid var(--line);padding:28px 16px 18px;display:flex;flex-direction:column;border-radius:calc(24px * var(--glass-radius,1))}.brand{display:flex;align-items:center;gap:10px;padding:0 14px 42px;font:700 21px -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;letter-spacing:-.04em}.brand-mark{background:linear-gradient(135deg,#ff8f93,#d6404a);color:#fff;width:29px;height:29px;border-radius:10px;display:grid;place-items:center;box-shadow:0 8px 18px #e5484d55}.eyebrow{color:#a0a5b5;text-transform:uppercase;font:500 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.13em;margin:0 0 10px}.nav-group{display:flex;flex-direction:column;gap:5px}.nav-lower{margin-top:36px}.nav-item{background:none;width:100%;display:flex;align-items:center;gap:12px;padding:12px 14px;color:#81879a;text-decoration:none;font-size:13px;border-radius:12px;text-align:left;transition:.2s}.nav-item.active,.nav-item:hover{background:var(--accent-soft);color:var(--accent-ink)}.nav-count{margin-left:auto;color:#9da3b5;font:11px ui-monospace,SFMono-Regular,Menlo,monospace}.live-dot{width:7px;height:7px;background:#49c899;border-radius:50%;margin-left:auto;box-shadow:0 0 10px #49c899}.sidebar-bottom{margin-top:auto}.profile{border-top:1px solid var(--line);padding:19px 11px 0;margin-top:16px;display:flex;align-items:center;gap:10px}.avatar,.top-avatar{background:linear-gradient(135deg,#f3bd97,#a977a6);display:grid;place-items:center;width:31px;height:31px;border-radius:50%;font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}.profile strong,.profile small{display:block}.profile strong{font-size:12px}.profile small{color:#9298aa;font-size:10px;margin-top:3px}.profile .muted{margin-left:auto;color:#8a90a2}.content-area{flex:1;min-width:0}.topbar{height:78px;border-bottom:1px solid rgba(255,255,255,.16);display:flex;align-items:center;justify-content:space-between;padding:0 4.5%;position:relative;z-index:6;box-shadow:0 10px 28px rgba(52,58,101,.07),var(--glass-bevel)}.breadcrumbs{display:flex;align-items:center;gap:9px;font-size:12px;color:#a3a8b7}.breadcrumbs strong{color:#34394e;font-weight:600}.top-actions{display:flex;align-items:center;gap:17px}.icon-button,.menu-button{background:none;color:#81879b;display:grid;place-items:center;padding:5px}.menu-button{display:none}.page-content{max-width:1280px;margin:0 auto;padding:48px 4.5% 60px}.welcome-row{display:flex;justify-content:space-between;align-items:end;gap:22px}.welcome-row h1{font:600 clamp(25px,3vw,36px) -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;letter-spacing:-.055em;margin:0}.welcome-row h1 span{color:var(--accent);font-size:20px;vertical-align:5px;margin-left:5px}.subhead{color:var(--ink-soft,#8a90a2);margin:12px 0 0;font-size:13px}
+/* The blocks that stand on the backdrop rather than on a card of their own. Their headings and
+   their standfirst follow --page-ink / --page-muted; a card's own type is untouched by both. */
+.welcome-row,.collection-heading,.section-heading,.settings-page-head,.asset-heading,.back-link{color:var(--page-ink,#171b2d)}
+.welcome-row .subhead,.collection-heading .subhead,.section-heading p,.settings-page-head .subhead,.back-link{color:var(--page-muted,#8a90a2)}
+.welcome-row .eyebrow,.collection-heading .eyebrow,.settings-page-head .eyebrow{color:var(--page-muted,#a0a5b5)}.welcome-actions{display:flex;gap:10px}.primary-button,.ghost-button,.small-action,.toolbar-button,.save-button{display:flex;align-items:center;gap:8px;border-radius:11px;font-size:12px;font-weight:600}.primary-button{background:var(--accent);color:#fff;padding:11px 16px;box-shadow:0 8px 18px #e5484d44}.primary-button:hover{background:#e5484d}.ghost-button{background:var(--panel);border:1px solid var(--line);padding:10px 14px;color:var(--muted);box-shadow:0 4px 12px #4548700c}.section-heading{display:flex;align-items:end;justify-content:space-between}.asset-heading{margin:41px 0 17px}.section-heading h2{font:600 18px -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;margin:0 0 5px;letter-spacing:-.03em}.section-heading p{margin:0;color:var(--ink-soft,#8a90a2);font-size:12px}.asset-tools{display:flex;align-items:center;gap:14px}.asset-count{color:var(--muted);font:11px ui-monospace,SFMono-Regular,Menlo,monospace}.small-action{padding:8px 11px;background:var(--panel);border:1px solid var(--line);color:var(--accent-ink);box-shadow:0 5px 13px #4548700b}.asset-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.asset-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;align-items:center;gap:11px;text-align:left;min-width:0;box-shadow:0 6px 18px #45487008;transition:.2s}.asset-card:hover,.selected-asset{border-color:#ffb8bb;transform:translateY(-2px)}.asset-thumb{width:43px;height:43px;border-radius:12px;flex:none;display:grid;place-items:center;color:#fff}.asset-thumb.imported{background:linear-gradient(135deg,#42c79b,#228b75)}.asset-text{min-width:0}.asset-text strong,.asset-text small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.asset-text strong{font-size:12px;color:var(--ink)}.asset-text small{color:var(--muted);font-size:10px;margin-top:5px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow)}.editor-layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(250px,.8fr);gap:16px;margin-top:20px}.editor-panel{padding:23px}.panel-heading{display:flex;align-items:start;justify-content:space-between}.panel-heading h2{font:600 20px -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;margin:0;letter-spacing:-.04em}.wave-editor{margin-top:21px;background:#f7f7fb;border-radius:15px;padding:17px}.wave-toolbar{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:11px}.wave-toolbar span{display:flex;align-items:center;gap:6px}.toolbar-button{padding:8px 11px;background:var(--accent-soft);color:var(--accent-ink)}.wave-track{height:125px;position:relative;margin-top:20px;display:flex;align-items:center;gap:3px;overflow:hidden}.wave-bars{height:100%;width:100%;display:flex;align-items:center;gap:3px}.wave-bars i{display:block;flex:1;min-width:2px;background:linear-gradient(180deg,#ffb0b3,#c93a40);border-radius:5px;opacity:.75}.playhead{position:absolute;top:0;bottom:0;width:2px;background:#f26c72;box-shadow:0 0 8px #f26c72;transition:left .1s}.wave-times{display:flex;justify-content:space-between;color:#9a9fb0;font:10px ui-monospace,SFMono-Regular,Menlo,monospace}.controls-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}.range-control span{display:flex;justify-content:space-between;color:#858b9d;font-size:11px}.range-control b{color:var(--accent-ink);font:11px ui-monospace,SFMono-Regular,Menlo,monospace}.range-control input{width:100%;accent-color:var(--accent);margin-top:10px}.details-column{display:flex;flex-direction:column;gap:16px}.metadata-panel{padding:21px}.panel-title{display:flex;align-items:center;gap:8px;color:#e5484d}.panel-title h3{font:600 14px -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;margin:0;color:var(--ink)}.metadata-panel label{display:block;margin-top:14px;text-transform:capitalize;color:#8b90a1;font-size:10px}.metadata-panel input{display:block;width:100%;margin-top:6px;padding:10px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);outline:none;font-size:12px}.metadata-panel input:focus{border-color:#ffb0b3;background:var(--panel)}.save-button{justify-content:center;width:100%;padding:11px;margin-top:18px;background:#2bb489;color:#fff}.preview-panel{padding:17px}.video-preview{width:100%;display:block;border-radius:12px;margin-top:12px;background:#111}.empty-editor{margin-top:20px;padding:39px 25px;display:flex;align-items:center;gap:16px}.empty-icon{width:47px;height:47px;border-radius:14px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center}.empty-editor h2{font:600 18px -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;margin:0}.empty-editor p{color:var(--ink-soft,#8a90a2);font-size:12px;margin:6px 0 0}.empty-editor .small-action{margin-left:auto}.player{position:fixed;z-index:5;bottom:16px;left:50%;transform:translateX(-50%);width:min(920px,calc(100% - 32px));min-height:67px;display:grid;grid-template-columns:1.1fr 1.6fr 1.1fr;align-items:center;gap:20px;padding:10px 16px;border:1px solid rgba(255,255,255,.16);border-radius:calc(20px * var(--glass-radius,1));box-shadow:0 14px 35px #34406a25}.now-playing{display:flex;align-items:center;gap:10px;min-width:0}.now-playing strong,.now-playing small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.now-playing strong{font-size:12px}.now-playing small{color:#9298a9;font-size:10px;margin-top:3px}.mini-cover{width:37px;height:37px;border-radius:11px;background:linear-gradient(135deg,#ff8f93,#d6404a);display:grid;place-items:center;color:#fff;font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace;flex:none}.player-controls{display:flex;align-items:center;gap:8px}.player-button{width:35px;height:35px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center}.player-button:disabled{opacity:.4}.progress-wrap{display:flex;align-items:center;gap:8px;flex:1;color:#9398a9;font:10px ui-monospace,SFMono-Regular,Menlo,monospace}/* The seek bar is a hairline that fills: no knob until the pointer is on it, and the fill is the
+   studio's purple wherever it appears. --seek (the played share, in %) is written by the page on
+   every render, and the same rule dresses the volume slider, which is cut a shade thicker. */
+.progress-wrap input{min-width:60px;flex:1;height:14px;appearance:none;-webkit-appearance:none;background:none;cursor:pointer;color:var(--accent)}
+:is(.progress-wrap,.volume-slider) input::-webkit-slider-runnable-track{height:var(--track-h,4px);border-radius:999px;background:linear-gradient(to right,currentColor var(--seek,0%),color-mix(in srgb,currentColor 16%,transparent) var(--seek,0%))}
+:is(.progress-wrap,.volume-slider) input::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;margin-top:calc((var(--track-h,4px) - 11px) / 2);border-radius:50%;background:currentColor;box-shadow:0 1px 3px rgba(23,27,45,.35);opacity:0;transition:opacity .16s ease}
+:is(.progress-wrap,.volume-slider) input:hover::-webkit-slider-thumb,:is(.progress-wrap,.volume-slider) input:active::-webkit-slider-thumb,:is(.progress-wrap,.volume-slider) input:focus-visible::-webkit-slider-thumb{opacity:1}
+.player-actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;color:#888fa0}.player-actions input{width:70px;accent-color:var(--accent)}.queue-button{display:flex;align-items:center;gap:7px;background:var(--accent-soft);color:var(--accent-ink);padding:8px 10px;border-radius:10px;font-size:11px}.modal-backdrop{position:fixed;inset:0;background:#1e214455;z-index:70;display:grid;place-items:center;padding:20px}.upload-modal{width:min(560px,100%);background:var(--panel);border-radius:23px;padding:27px;box-shadow:0 24px 70px #23294a3d}.modal-heading{display:flex;justify-content:space-between;gap:20px}.modal-heading h2{margin:0;font:600 24px -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;letter-spacing:-.04em}.modal-heading p:not(.eyebrow){color:var(--ink-soft,#8a90a2);font-size:12px;margin:8px 0 0}.dropzone{margin-top:24px;border:1px dashed #ffb8bb;border-radius:16px;min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--panel);transition:.15s;cursor:pointer;text-align:center}.dropzone:hover,.dropzone.dragging{border-color:#c93a40;background:var(--accent-soft)}.drop-icon{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-ink)}.dropzone h3{font:600 15px -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;margin:13px 0 5px}.dropzone p{color:var(--muted);font-size:11px;margin:0}.dropzone p span{color:#e5484d}.dropzone small{color:var(--muted);font-size:10px;margin-top:13px}.format-list{border-top:1px solid var(--line);margin-top:22px;padding-top:17px}.format-list strong{display:block;color:var(--ink-soft,#8a90a2);font:10px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:11px}.format-list div{display:flex;flex-wrap:wrap;gap:6px}.format-list span{color:var(--accent-ink);background:var(--accent-soft);border-radius:6px;padding:5px 7px;font:10px ui-monospace,SFMono-Regular,Menlo,monospace}.error-message{color:var(--accent-ink);background:var(--accent-soft);border-radius:8px;padding:9px 10px;font-size:11px;margin:13px 0 0}.collection-view{min-height:calc(100vh - 150px);padding:8px 0 110px}.collection-heading{display:flex;align-items:end;justify-content:space-between;gap:24px;margin-bottom:34px}.collection-heading h1{margin:0;color:var(--ink);font:600 clamp(30px,4vw,48px) -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;letter-spacing:-.06em}.collection-view .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:18px}.collection-view .project-card{appearance:none;display:flex;flex-direction:column;align-items:stretch;gap:0;min-height:218px;padding:0;overflow:hidden;text-align:left;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);transition:.18s}.collection-view .project-card:hover{transform:translateY(-3px);border-color:#ffb8bb;background:var(--panel)}.collection-view .project-card strong{display:block;padding:14px 15px 3px;color:var(--ink);font-size:13px;font-weight:600}.collection-view .project-card small{display:block;padding:0 15px 15px;color:var(--muted);font-size:10px}.project-art{height:142px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#e5484d,#8f2027)}.project-art.art-1{background:linear-gradient(135deg,#df8b71,#674067)}.project-art.art-2{background:linear-gradient(135deg,#668bd0,#253b70)}.project-art.art-3{background:linear-gradient(135deg,#55b99b,#225b59)}.back-link{display:inline-flex;align-items:center;gap:7px;margin-top:28px;padding:0;color:var(--accent-ink);background:none;font-size:12px}.search-input{width:190px;padding:8px 11px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:10px;outline:none;font-size:12px}.search-input:focus{border-color:#ffb0b3}@media(max-width:900px){.sidebar{width:220px}.asset-strip{grid-template-columns:repeat(2,1fr)}.editor-layout{grid-template-columns:1fr}.player{grid-template-columns:1fr 1.5fr}.player-actions{display:none}}@media(max-width:680px){.sidebar{position:fixed;z-index:10;inset:0 auto 0 0;transform:translateX(-105%);transition:.2s;box-shadow:20px 0 30px #30345622}.sidebar.is-open{transform:translateX(0)}.menu-button{display:grid}.topbar{padding:0 18px}.page-content{padding:32px 18px 110px}.welcome-row,.collection-heading{align-items:start;flex-direction:column}.welcome-actions{width:100%}.welcome-actions button{flex:1;justify-content:center}.asset-strip{grid-template-columns:1fr}.controls-grid{grid-template-columns:1fr}.player{bottom:8px;width:calc(100% - 16px);grid-template-columns:1fr 1fr;padding:9px 12px}.player-controls{justify-content:flex-end}.progress-wrap{position:absolute;left:12px;right:12px;bottom:-6px}.now-playing small{max-width:130px}.queue-button{display:none}.search-input{position:absolute;right:45px;top:60px;width:calc(100vw - 90px)}.empty-editor{align-items:start;flex-wrap:wrap}.empty-editor .small-action{margin-left:0}}
+.advanced-row{display:flex;align-items:end;gap:18px;margin-top:14px}.advanced-row .range-control{flex:1}.queue-add{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:9px 12px;border-radius:10px;background:var(--accent-soft);color:var(--accent-ink);font-size:11px;font-weight:600}.queue-status{font:10px ui-monospace,SFMono-Regular,Menlo,monospace;color:#9298a9;white-space:nowrap}
+/* Project cards are content-first: no decorative overflow menu or empty affordance. */
+.collection-view .project-card{position:relative;justify-content:flex-start}.collection-view .project-card strong{padding-top:16px}.collection-view .project-card small{padding-bottom:17px}.empty-assets{grid-column:1/-1;padding:42px 24px;border:1px dashed var(--line);border-radius:18px;background:color-mix(in srgb,var(--panel) 60%,transparent);color:var(--muted);text-align:center;font-size:13px}
+/* Dedicated precision editor */
+.panel-heading-actions{display:flex;align-items:center;gap:8px}.parameter-screen{position:fixed;inset:0;z-index:15;overflow:auto;padding:56px max(24px,6vw) 100px;background:linear-gradient(135deg,#f8f9fd,#eeeffa);}.parameter-header{max-width:980px;margin:0 auto;display:flex;align-items:start;justify-content:space-between;gap:30px}.parameter-header h1{font:600 clamp(28px,4vw,46px) -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;letter-spacing:-.06em;margin:0}.parameter-header p:not(.eyebrow){color:var(--ink-soft,#8a90a2);font-size:13px;margin-top:10px}.parameter-grid{max-width:980px;margin:38px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:18px}.parameter-card{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:26px;box-shadow:var(--shadow)}.parameter-card .range-control{display:block;margin-top:28px}.parameter-card .primary-button,.parameter-card .save-button{margin-top:28px}.auth-modal{width:min(470px,100%);background:var(--panel);border-radius:23px;padding:27px;box-shadow:0 24px 70px #23294a3d}.auth-form{margin-top:22px}.auth-form label{display:block;color:var(--ink-soft,#8a90a2);font-size:11px;margin-top:14px}.auth-form input{display:block;width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);outline:none;font-size:12px}.auth-form input:focus{border-color:#ffb0b3;background:var(--panel)}.auth-tabs{display:flex;gap:5px;padding:4px;background:#f2f2f8;border-radius:11px;margin-bottom:19px}.auth-tabs button{flex:1;padding:9px;border-radius:8px;background:transparent;color:#9298aa;font-size:12px}.auth-tabs button.active{background:var(--panel);color:var(--accent-ink);box-shadow:0 3px 10px #55577c14}.auth-submit{justify-content:center;width:100%;margin-top:18px}.account-badge{display:flex;align-items:center;gap:8px;background:var(--accent-soft);color:var(--accent-ink);border-radius:11px;padding:12px;margin-top:20px;font-size:12px}.profile-button{border:0;padding-left:11px}.top-avatar-button{border:0}.profile-button:hover{background:color-mix(in srgb,var(--ink) 8%,transparent)}@media(max-width:680px){.parameter-screen{padding:30px 18px 100px}.parameter-header{display:block}.parameter-header .ghost-button{margin-top:20px}.parameter-grid{grid-template-columns:1fr;margin-top:24px}}
+/* Floating navigation rail */
+.sidebar{position:fixed;z-index:10;left:18px;top:18px;bottom:18px;height:auto;border:1px solid rgba(225,227,239,.95);border-radius:calc(24px * var(--glass-radius,1));box-shadow:0 18px 45px rgba(52,58,101,.12),0 2px 5px rgba(52,58,101,.06),var(--glass-bevel);overflow:hidden}
+/* The bar across the top is the rail's twin, not a strip glued to the window: the same 18px of
+   air on every side the rail keeps, the same corner, border and shadow, so the two read as one
+   pair of glass slabs with the page floating between them. Its own bottom hairline goes — the
+   capsule carries a border all the way round instead. */
+@media(min-width:681px){.topbar{margin:18px 18px 0 0;border:1px solid var(--line);border-radius:calc(24px * var(--glass-radius,1));box-shadow:0 18px 45px rgba(52,58,101,.12),0 2px 5px rgba(52,58,101,.06),var(--glass-bevel);overflow:hidden}}
+.content-area{margin-left:286px}.nav-item{border-radius:14px}.sidebar-bottom{padding-bottom:2px}@media(max-width:680px){.sidebar{left:10px;top:10px;bottom:10px}.content-area{margin-left:0}}
+/* Guest/account tile: keep the button compact and aligned inside the floating rail. */
+.profile-button{display:flex;align-items:center;width:100%;min-width:0;margin:16px 0 0;padding:14px 11px;border:1px solid transparent;border-top-color:var(--line);border-radius:14px;background:transparent;text-align:left;overflow:hidden}.profile-button .avatar{flex:none}.profile-button>div:nth-child(2){min-width:0}.profile-button strong,.profile-button small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.profile-button:hover{border-color:#ffd6d8;background:color-mix(in srgb,var(--ink) 8%,transparent)}.now-playing-copy{min-width:0;overflow:hidden}.now-playing-copy strong{display:block;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.now-playing-copy small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.now-playing-copy .is-long-title{overflow:hidden;text-overflow:clip}.now-playing-copy .is-long-title span{display:inline-block;white-space:nowrap}@keyframes title-marquee{from{transform:translateX(0)}to{transform:translateX(min(0px,calc(250px - 100%)))}}@media(max-width:900px){.now-playing-copy strong{max-width:180px}}@media(max-width:680px){.now-playing-copy strong{max-width:130px}.profile-button{margin-top:16px}}
+/* Keep the floating player inside the content column instead of underneath the rail. */
+@media(min-width:681px){.player{left:calc(50% + 134px);width:min(920px,calc(100% - 300px));}}
+@media(max-width:900px) and (min-width:681px){.player{left:calc(50% + 120px);width:calc(100% - 270px);grid-template-columns:1fr 1.5fr;}.player-actions{display:none;}}
+@media(max-width:680px){.player{left:50%;width:calc(100% - 16px);}}
+/* Long track titles continuously scroll without requiring hover. */
+.now-playing-copy .is-long-title{overflow:hidden;text-overflow:clip;white-space:nowrap;display:block;max-width:250px}.now-playing-copy .is-long-title span{display:inline-block;white-space:nowrap;padding-right:56px;animation:title-marquee 10s linear infinite}@media(max-width:900px){.now-playing-copy .is-long-title{max-width:180px}}@media(max-width:680px){.now-playing-copy .is-long-title{max-width:130px}}
+.metadata-float{position:fixed;z-index:8;right:24px;top:98px;width:min(320px,calc(100vw - 48px));padding:22px;border:1px solid rgba(255,255,255,.16);border-radius:calc(20px * var(--glass-radius,1));box-shadow:0 18px 45px rgba(52,58,101,.16),0 2px 5px rgba(52,58,101,.06),var(--glass-bevel)}.metadata-float-header{display:flex;align-items:start;justify-content:space-between;gap:12px}.metadata-float-header h2{margin:0;font:600 17px -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;letter-spacing:-.03em;max-width:245px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.metadata-float label{display:block;margin-top:12px;text-transform:capitalize;color:#8b90a1;font-size:10px}.metadata-float input{display:block;width:100%;margin-top:5px;padding:10px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);outline:none;font-size:12px}.metadata-float input:focus{border-color:#ffb0b3;background:var(--panel)}.metadata-float .save-button{margin-top:18px}@media(max-width:680px){.metadata-float{top:76px;right:12px;width:calc(100vw - 24px)}}
+/* Motion and project actions */
+@keyframes card-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}.project-card,.asset-card,.panel{animation:card-rise .45s ease both}.project-card:nth-child(2){animation-delay:.04s}.project-card:nth-child(3){animation-delay:.08s}.project-card:nth-child(4){animation-delay:.12s}.project-card:hover .project-art{transform:scale(1.04)}.project-art{overflow:hidden;transition:transform .35s ease}.project-art img,.project-art video{width:100%;height:100%;object-fit:cover;display:block}.project-card{position:relative}.project-menu-wrap{position:absolute;right:12px;bottom:12px;z-index:3}.project-menu-button{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:color-mix(in srgb,var(--panel) 88%,transparent);color:var(--muted);box-shadow:0 5px 14px #373d641c}.project-menu-button:hover{color:var(--accent-ink);background:var(--accent-soft)}.project-menu{position:absolute;right:0;bottom:34px;display:flex;flex-direction:column;min-width:145px;padding:6px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 30px #30365b24;animation:menu-pop .16s ease}.project-menu span{padding:9px 11px;color:var(--muted);font-size:11px;white-space:nowrap;border-radius:8px}.project-menu span:hover{background:var(--accent-soft);color:var(--accent-ink)}@keyframes menu-pop{from{opacity:0;transform:translateY(5px) scale(.96)}to{opacity:1;transform:none}}.metadata-float{animation:float-in .25s ease}@keyframes float-in{from{transform:translateX(18px)}to{transform:none}}.metadata-float input{transition:border-color .2s,box-shadow .2s,transform .2s}.metadata-float input:focus{transform:translateY(-1px);box-shadow:0 5px 13px #d6404a18}.cover-button{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:10px;margin-top:12px;border-radius:10px;background:var(--accent-soft);color:var(--accent-ink);font-size:11px;font-weight:600}
+.interactive-wave{cursor:crosshair;user-select:none;transition:background .2s}.interactive-wave:hover{background:var(--accent-soft)}.interactive-wave:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.interactive-wave .wave-bars{pointer-events:none}.wave-hint{color:#9a9fb0;font:10px ui-monospace,SFMono-Regular,Menlo,monospace}.parameter-wave-card{max-width:980px;margin:22px auto 0;padding:20px 24px;background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow)}.parameter-wave-card .wave-track{height:145px;margin-top:14px}.parameter-wave-card .wave-times{margin-top:5px}
+.video-project{padding:22px;margin-top:20px}.video-project-preview{width:100%;display:block;margin-top:18px;border-radius:14px;background:#111;max-height:560px}.video-overlay{position:fixed;inset:0;z-index:50;background:#050507;display:grid;place-items:center}.video-overlay>video{width:100%;height:100%;object-fit:contain}.video-left-zone{position:absolute;left:0;top:0;bottom:0;width:31%;display:flex;align-items:center;padding-left:24px;pointer-events:none}.video-float-panel{pointer-events:auto;opacity:0;transform:translateX(-24px);transition:.35s ease;display:flex;flex-direction:column;gap:9px;padding:17px;width:min(245px,80%);border:1px solid #ffffff2d;border-radius:17px;background:#15151dcc;color:#fff;backdrop-filter:blur(15px)}.video-left-zone:hover .video-float-panel{opacity:1;transform:none}.video-float-panel strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.video-float-panel small{color:#a5a5b1;font-size:10px}.video-float-panel button{display:flex;align-items:center;gap:7px;padding:9px;border:1px solid #ffffff20;border-radius:9px;background:#ffffff10;color:#fff;text-align:left;font-size:11px}.video-float-panel button:hover{background:#e5484d}.video-overlay>video::-webkit-media-controls-panel{background:linear-gradient(transparent,#08080acc)}
+/* Window-sized video player: never invoke OS fullscreen. Edge zones reveal controls. */
+.video-overlay{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden}.video-overlay>video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.video-left-zone{z-index:2;width:34%;align-items:center}.video-bottom-zone{position:absolute;z-index:3;left:0;right:0;bottom:0;height:18%;display:flex;justify-content:center;align-items:flex-end;padding-bottom:14px;pointer-events:none;opacity:0;transform:translateY(12px);transition:.3s ease;color:#dcdce4;font:10px ui-monospace,SFMono-Regular,Menlo,monospace;background:linear-gradient(transparent,rgba(0,0,0,.5))}.video-overlay:hover .video-bottom-zone{opacity:.75;transform:none}.video-overlay>video::-webkit-media-controls{z-index:4}
+/* Window-sized video player: no OS fullscreen, edge zones reveal controls. */
+.video-overlay{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden}.video-overlay>video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.video-left-zone{z-index:2;width:34%;align-items:center}.video-bottom-zone{position:absolute;z-index:3;left:0;right:0;bottom:0;height:18%;display:flex;justify-content:center;align-items:flex-end;padding-bottom:14px;pointer-events:none;opacity:0;transform:translateY(12px);transition:.3s ease;color:#dcdce4;font:10px ui-monospace,SFMono-Regular,Menlo,monospace;background:linear-gradient(transparent,rgba(0,0,0,.5))}.video-overlay:hover .video-bottom-zone{opacity:.75;transform:none}
+/* Video controls are app-owned and only appear when the pointer reaches the bottom edge. */
+.video-overlay{isolation:isolate}.video-overlay>video::-webkit-media-controls{display:none!important}.video-bottom-zone{pointer-events:auto;opacity:0;transform:translateY(18px);height:84px;padding:0 28px 18px;align-items:flex-end;background:linear-gradient(transparent,rgba(0,0,0,.75));transition:opacity .25s ease,transform .25s ease}.video-bottom-zone:hover{opacity:1;transform:none}.video-controls{display:flex;align-items:center;gap:10px;width:min(980px,100%);padding:10px 14px;border:1px solid #ffffff28;border-radius:14px;background:#15151dcc;color:#fff;backdrop-filter:blur(14px);box-shadow:0 10px 30px #0006}.video-controls button{width:30px;height:30px;display:grid;place-items:center;border-radius:50%;background:#e5484d;color:#fff}.video-controls input[type=range]{flex:1;min-width:60px;accent-color:#ff8f93}.video-controls .video-volume{flex:0 0 100px}.video-time{font:10px ui-monospace,SFMono-Regular,Menlo,monospace;color:#d8d8e5;white-space:nowrap}
+/* Override the broad overlay hover rule: bottom controls react only to the bottom edge. */
+.video-overlay:hover .video-bottom-zone{opacity:0;transform:translateY(18px)}.video-overlay .video-bottom-zone:hover{opacity:1;transform:none}
+/* Precise edge hit zones: controls are revealed only when the pointer reaches an edge. */
+.video-left-zone{position:absolute;left:0;top:0;bottom:0;width:72px;padding-left:12px;align-items:center;pointer-events:auto;overflow:visible}.video-left-zone .video-float-panel{transform:translateX(calc(-100% - 20px));opacity:0;visibility:hidden;transition:opacity .28s ease,transform .28s ease,visibility .28s}.video-left-zone:hover .video-float-panel{transform:translateX(0);opacity:1;visibility:visible}.video-bottom-zone{height:78px;padding:0 22px 14px;opacity:0!important;transform:translateY(16px);pointer-events:auto;transition:opacity .25s ease,transform .25s ease}.video-bottom-zone:hover{opacity:1!important;transform:translateY(0)}.video-bottom-zone:before{content:"";position:absolute;inset:auto 0 0;height:78px;z-index:-1}
+/* Video playback reuses the same visual language as the normal player and panels. */
+.video-overlay .video-bottom-zone{height:92px;padding:0 20px 14px;background:linear-gradient(transparent,rgba(12,14,24,.55));}
+.video-overlay .video-controls{width:min(920px,calc(100% - 32px));min-height:67px;gap:12px;padding:10px 16px;border:1px solid #e3e5ee;border-radius:20px;background:rgba(255,255,255,.94);color:var(--ink);box-shadow:0 14px 35px #34406a25;backdrop-filter:blur(20px)}
+.video-overlay .video-controls button{background:var(--accent);color:#fff;width:35px;height:35px;box-shadow:0 8px 18px #e5484d44}.video-overlay .video-controls input[type=range]{accent-color:var(--accent)}.video-overlay .video-controls .video-time{color:#9398a9}.video-overlay .video-left-zone{width:72px;padding-left:12px}.video-overlay .video-float-panel{width:244px;padding:21px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:20px;color:var(--ink);box-shadow:0 18px 45px rgba(52,58,101,.16);backdrop-filter:blur(18px)}.video-overlay .video-float-panel strong{color:var(--ink)}.video-overlay .video-float-panel small{color:#9298a9}.video-overlay .video-float-panel button{border:1px solid var(--line);background:#fff;color:#62687a;border-radius:11px}.video-overlay .video-float-panel button:hover{background:var(--accent-soft);color:var(--accent-ink)}
+/* Video playback reuses the homepage player dock; no custom edge panels. */
+.video-left-zone,.video-bottom-zone{display:none!important}.video-player-dock{position:absolute;z-index:6;left:50%;bottom:16px;transform:translateX(-50%);width:min(920px,calc(100% - 32px));min-height:67px;display:grid;grid-template-columns:1.1fr 1.6fr 1.1fr;align-items:center;gap:20px;padding:10px 16px;border:1px solid rgba(255,255,255,.16);border-radius:calc(20px * var(--glass-radius,1));box-shadow:0 14px 35px #34406a25;animation:float-in .25s ease}.video-player-dock .player-controls{display:flex;align-items:center;gap:8px}.video-player-dock .player-actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;color:#888fa0}.video-player-dock .player-actions input{width:70px;accent-color:var(--accent)}.video-player-dock .progress-wrap input{accent-color:var(--accent)}@media(max-width:900px){.video-player-dock{grid-template-columns:1fr 1.5fr}.video-player-dock .player-actions{display:none}}@media(max-width:680px){.video-player-dock{bottom:8px;width:calc(100% - 16px);grid-template-columns:1fr 1fr;padding:9px 12px}.video-player-dock .progress-wrap{position:absolute;left:12px;right:12px;bottom:-6px}.video-player-dock .now-playing-copy strong{max-width:130px}}
+/* Video uses the exact homepage sidebar component styles without changing the base design. */
+.video-shell-sidebar{position:absolute;z-index:8;left:0;top:0;bottom:0;width:0;overflow:visible;pointer-events:none}.video-shell-sidebar .sidebar{position:absolute;left:18px;top:18px;bottom:18px;width:244px;pointer-events:auto;transform:translateX(calc(-100% - 24px));transition:transform .3s ease}.video-shell-sidebar:hover .sidebar{transform:translateX(0)}.video-shell-sidebar .sidebar-bottom{margin-top:auto}.video-shell-sidebar .nav-item{font-size:13px;padding:12px 14px}.video-shell-sidebar .brand{font-size:21px;padding:0 14px 42px}.video-shell-sidebar .brand-mark{width:29px;height:29px}.video-shell-sidebar .eyebrow{font-size:10px}.video-shell-sidebar .profile{padding:19px 11px 0}.video-shell-sidebar .avatar{width:31px;height:31px}.video-shell-sidebar .profile strong{font-size:12px}.video-shell-sidebar .profile small{font-size:10px}
+.video-overlay .video-player-dock{opacity:0;transition:opacity .2s ease}.video-overlay .video-player-dock:hover,.video-overlay:has(.video-player-dock:hover) .video-player-dock{opacity:1}
+/* Edge trigger only: keep the reused homepage sidebar hidden until the pointer touches the left edge. */
+.video-shell-sidebar{width:18px;pointer-events:auto}.video-shell-sidebar:hover .sidebar{transform:translateX(0)}
+/* Keep the reused homepage player visually unchanged; only its visibility is edge-triggered. */
+.video-overlay .video-player-dock{opacity:0;pointer-events:none}.video-overlay .video-player-dock:hover{opacity:1;pointer-events:auto}
+.video-overlay:has(.video-player-dock:hover) .video-player-dock{opacity:1;pointer-events:auto}
+/* Project previews: real media is requested only for the visible card. */
+.project-art.audio-art{background:linear-gradient(135deg,#ff8f93,#c93a40);color:#fff}.project-art.audio-art svg{filter:drop-shadow(0 8px 12px #8f202744);transform:scale(1.2)}
+/* Video dock is state-controlled by pointer proximity to the bottom edge. */
+.video-overlay .video-player-dock{opacity:0!important;pointer-events:none!important;transition:opacity .2s ease}.video-overlay.video-controls-visible .video-player-dock{opacity:1!important;pointer-events:auto!important}
+/* Reliable video dock hit target: the dock is revealed by the overlay's bottom edge zone. */
+.video-overlay:after{content:"";position:absolute;z-index:5;left:0;right:0;bottom:0;height:120px;pointer-events:auto}.video-overlay.video-controls-visible:after{pointer-events:none}.video-overlay .video-player-dock{z-index:7}
+/* Keep the bottom hit zone above the video but below the dock; React owns visibility. */
+.video-overlay:after{z-index:4;height:150px;pointer-events:auto}.video-overlay .video-player-dock{z-index:8}.video-overlay.video-controls-visible:after{pointer-events:none}
+/* Explicit bottom hit zone: reliable across browsers and independent of video media controls. */
+.video-overlay:after{display:none}.video-dock-hit-zone{position:absolute;z-index:7;left:0;right:0;bottom:0;height:150px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:16px;pointer-events:auto}.video-dock-hit-zone .video-player-dock{position:relative;left:auto;bottom:auto;z-index:8;transform:none;translate:0 10px;visibility:hidden;pointer-events:none;transition:translate .2s ease,visibility 0s linear .2s}.video-overlay.video-controls-visible .video-dock-hit-zone .video-player-dock,.video-dock-hit-zone:hover .video-player-dock{translate:0 0;visibility:visible;pointer-events:auto;transition-delay:0s,0s}
+/* The dock zone itself is the hover target; keep visibility independent from :hover on the dock. */
+.video-dock-hit-zone.is-visible .video-player-dock{translate:0 0;visibility:visible;pointer-events:auto;transition-delay:0s,0s}
+/* Final visibility contract: React state controls the dock; no hover selector can hide it. */
+.video-dock-hit-zone .video-player-dock{transition:translate .2s ease,visibility 0s linear .2s!important}
+.video-dock-hit-zone.is-visible .video-player-dock{translate:0 0;visibility:visible!important}
+
+/* Album grouping in the collection views. */
+.album-group{margin-bottom:34px}
+.album-heading{display:flex;align-items:center;gap:12px;margin:0 0 16px}
+.album-heading strong{display:block;font-size:16px;color:var(--ink)}
+.album-heading small{color:var(--muted);font-size:12px}
+.album-cover{width:46px;height:46px;flex:none;border-radius:13px;overflow:hidden;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#e5484d,#8f2027);box-shadow:var(--shadow)}
+.album-cover img{width:100%;height:100%;object-fit:cover}
+
+/* Albums view: album cards and the inline track list. */
+.album-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:18px;margin-bottom:34px}
+.album-card{appearance:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);transition:.18s}
+.album-card:hover{transform:translateY(-2px)}
+.album-card.is-expanded{border-color:var(--accent);box-shadow:0 16px 36px #e5484d2e}
+.album-card-art{width:100%;aspect-ratio:1/1;margin-bottom:8px;border-radius:14px;display:grid;place-items:center;overflow:hidden;color:#fff;background:linear-gradient(135deg,#e5484d,#8f2027)}
+.album-card-art img{width:100%;height:100%;object-fit:cover}
+.album-card strong{font-size:15px;color:var(--ink)}
+.album-card small{color:var(--muted);font-size:12px}
+.album-detail{margin-bottom:34px;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);animation:card-rise .3s ease both}
+.album-detail-head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.album-detail-head div{flex:1;min-width:0}
+.album-detail-head strong{display:block;font-size:18px;color:var(--ink)}
+.album-detail-head small{color:var(--muted);font-size:12px}
+.album-detail-head .primary-button{display:inline-flex;align-items:center;gap:7px}
+.track-list{display:flex;flex-direction:column;gap:6px}
+.track-row{appearance:none;display:flex;align-items:center;gap:14px;width:100%;padding:11px 14px;text-align:left;background:var(--panel2);border:1px solid transparent;border-radius:12px;transition:.15s}
+.track-row:hover{background:color-mix(in srgb,var(--ink) 7%,transparent)}
+.track-row.is-current{border-color:var(--accent);background:var(--accent-soft)}
+.track-no{width:26px;flex:none;color:var(--muted);font:500 13px ui-monospace,SFMono-Regular,Menlo,monospace,monospace;text-align:right}
+.track-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:500}
+.track-row small{color:var(--muted);font-size:12px}
+
+/* Video overlay rail: same look as the sidebar navigation, but listing playable media. */
+.video-playlist{flex:1;min-height:0;overflow-y:auto;gap:2px;padding-right:2px}
+.video-playlist .nav-item{gap:10px}
+.video-playlist .playlist-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.video-playlist .playlist-empty{margin:0;padding:0 14px;color:var(--muted);font-size:12px}
+
+/* ── Frosted glass ────────────────────────────────────────────────────────────
+   Every glass control is an ordinary element: a translucent background plus a
+   CSS backdrop-filter, so the browser blurs whatever the pane sits on, clipped
+   to the pane's own rounded border-box. No canvas, no DOM capture, no per-frame
+   JavaScript. --glass-blur (px), --glass-radius (a radius multiplier) and
+   --glass-clarity (1 = nearly clear, 0 = opaque and milky) are set on .studio-shell
+   from Settings; --glass-edge-filter is written per pane by lib/glassEdge.ts and
+   bends the backdrop near the rim only — an engine that cannot do that (WebKit,
+   see .glass-rim-fallback) gets the shaded rim further down instead. */
+.ambient{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+.ambient-orb{position:absolute;border-radius:50%;filter:blur(72px);opacity:.5}
+.ambient-orb.orb-a{width:440px;height:440px;left:-70px;bottom:-60px;background:radial-gradient(circle at 35% 35%,#ffb3b6,#e5484d 52%,transparent 72%);animation:orb-a 22s ease-in-out infinite alternate}
+.ambient-orb.orb-b{width:480px;height:480px;right:-90px;bottom:-80px;background:radial-gradient(circle at 60% 40%,#ffcadb,#ef8fb4 48%,transparent 72%);animation:orb-b 27s ease-in-out infinite alternate}
+@keyframes orb-a{from{translate:0 0;scale:1}to{translate:70px -60px;scale:1.12}}
+@keyframes orb-b{from{translate:0 0;scale:1.06}to{translate:-80px -50px;scale:1}}
+/* No z-index here: a stacking context would trap every child below the panes,
+   so the topbar (z-index 6) would drop out of the root stack. Static content
+   still paints above the orbs by DOM order. */
+.content-area{position:relative}
+
+/* ── The material ────────────────────────────────────────────────────────────
+   One shared rule carries the frost: a translucent white tint over the blurred
+   backdrop. The panes keep their hairline rim (::after) and corner radius,
+   which is what makes the blur read as a sheet of glass. The page's own cards
+   are in this list too: a card is a sheet of the same glass, so the Clarity
+   slider, the Blur slider and the theme's tint reach them the same way they
+   reach the bar — a card on a dark backdrop is dark glass, never a flat black.
+   (They take the frost only, not the rim: every card would need its own
+   displacement map, and a library holds hundreds of them.) */
+:is(.sidebar,.topbar,.glass-bar,.glass-panel,.metadata-float,.video-player-dock,.bottom-pill,.pill-bubble,.panel,.asset-card,.project-card,.album-card,.album-detail,.settings-card,.parameter-card,.parameter-wave-card,.metadata-panel,.upload-modal,.auth-modal,.dropzone,.empty-assets){
+  /* Clarity is the milky/frosted half of the material: at 100% the pane is nearly clear glass, at 0%
+     it is opaque enough to hide whatever it sits on. It only moves the alpha of the tint, so
+     it costs nothing to drag. */
+  --glass-alpha:calc(.88 - var(--glass-clarity,1) * .44);
+  /* The tint is written as three bare channels rather than a colour, and the auto-shade is a
+     scalar the ink sampler sets per pane from the brightness behind it. Two reasons for the
+     arithmetic instead of color-mix(): lib/inkSampler.ts and lib/glassWebgl.ts both read this
+     declaration back with an rgb()/rgba() regex, and a color-mix() computed value serialises as
+     color(srgb …) — which would silently read as fully opaque; and scaling all three channels by
+     one factor is exactly "the same hue, darker", which is what a dark backdrop asks for. With
+     the default tint (255 255 255) and no shade this is byte-identical to white. */
+  background:rgb(
+    calc(var(--glass-tint-r,255) * (1 - var(--glass-shade,0) * .85))
+    calc(var(--glass-tint-g,255) * (1 - var(--glass-shade,0) * .85))
+    calc(var(--glass-tint-b,255) * (1 - var(--glass-shade,0) * .85))
+    / var(--glass-alpha));
+  /* The bevel is what makes the pane read as a slab rather than a tinted rectangle: a lit
+     top edge, a shaded bottom edge, and two wide inner gradients standing in for thickness.
+     Every drop shadow below appends it, so the two always travel together. */
+  --glass-bevel:
+    /* Edge only, and never white above: the white stroke is the masked hairline below, which runs
+       bright down the left side and fades as it crosses to the right. A bevel that also glowed
+       white inward would wash that stroke into the pane instead of letting it sit on the rim. */
+    inset 0 -1px 0 rgba(52,58,101,.11),
+    inset -1px 0 0 rgba(52,58,101,.05),
+    inset 0 -28px 36px -32px rgba(52,58,101,.55),
+    /* Empty unless an engine cannot bend a backdrop and the shaded rim below takes over. */
+    var(--glass-rim,0 0 #0000);
+  -webkit-backdrop-filter:blur(var(--glass-blur,12px)) saturate(170%);
+  backdrop-filter:blur(var(--glass-blur,12px)) saturate(170%) var(--glass-edge-filter,saturate(100%))}
+/* ── The page's cards are glass too ──────────────────────────────────────────
+   They take the frost from the material above — the Blur slider's blur, the studio's saturate,
+   and Clarity's alpha — but their surface is the theme's own panel role rather than the glass
+   tint's veil: a card is a sheet of the page, so on paper it is translucent white and on Ink,
+   Navy or Graphite it is translucent dark glass instead of a flat black. They take no rim: a
+   library can hold hundreds of cards and every rim pane needs a displacement map of its own. */
+:is(.panel,.asset-card,.project-card,.album-card,.album-detail,.settings-card,.parameter-card,.parameter-wave-card,.metadata-panel,.upload-modal,.auth-modal,.dropzone,.empty-assets){
+  background:color-mix(in srgb,var(--panel) calc(var(--glass-alpha,1) * 100%),transparent)}
+/* WebKit renders no bend for a backdrop-filter that names a filter — it does not paint the
+   reference, whatever its parser answered — so the rim of lib/glassEdge.ts has nowhere to attach
+   in Safari, which marks the shell with .glass-rim-fallback instead of building maps nobody can
+   use. What stands in is the one part of the optics a shadow can carry: a band of light just
+   inside the edge, and a wider shade inside that, reading as the thickness a flat sheet would
+   otherwise lack. Both sliders keep their meaning — the band is how far in the shading reaches,
+   the pull how strong it is — and it rides --glass-bevel, which every pane already appends to its
+   own shadow. The -webkit- twin above carries no --glass-edge-filter for the same reason: a value
+   the engine cannot paint invalidates the whole declaration, blur and all. */
+.glass-rim-fallback :is(.sidebar,.topbar,.glass-bar,.glass-panel,.metadata-float,.video-player-dock,.bottom-pill,.pill-bubble){
+  /* A shadow only reaches as far as its blur, so the band is the refraction slider held short of
+     the pane's middle — the same bound the bend keeps, in the rougher terms a shadow understands. */
+  --glass-rim-reach:min(var(--glass-band,0px),44px);
+  --glass-rim:
+    inset 0 0 calc(var(--glass-rim-reach) * .55) rgba(255,255,255,calc(var(--glass-pull,0) * .012)),
+    inset 0 0 calc(var(--glass-rim-reach) * 1.4) rgba(52,58,101,calc(var(--glass-pull,0) * .01))}
+/* The bar is a 67px strip: half its height is where the two rims meet, so its shade narrows to
+   stay an edge rather than a wash over the whole strip. */
+.glass-rim-fallback .glass-bar{--glass-rim-reach:min(var(--glass-band,0px),20px)}
+/* Where the rim is bent in WebGL (lib/glassWebgl.ts — Safari, and Chromium from a development
+   build with ?glasswebgl=1) the shader paints the rim band over the pane's own surface, and the
+   bevel — an inset shadow, which paints under any child — would be buried by it. It moves to a
+   pseudo-element instead: the same six insets, in the same place on screen, sitting above the
+   canvas and below the pane's content. Everything deeper than the band stays the pane's own
+   live backdrop-filter, so the frost is never a still image. */
+.glass-webgl :is(.sidebar,.topbar,.glass-bar,.glass-panel,.metadata-float,.video-player-dock,.bottom-pill,.pill-bubble){
+  /* A transparent shadow in the bevel's slot keeps every drop-shadow rule that appends it valid. */
+  --glass-bevel:0 0 #0000}
+.glass-webgl :is(.sidebar,.topbar,.glass-bar,.glass-panel,.metadata-float,.video-player-dock,.bottom-pill,.pill-bubble)::before{
+  content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.75),
+    inset 1px 0 0 rgba(255,255,255,.32),
+    inset 0 -1px 0 rgba(52,58,101,.11),
+    inset -1px 0 0 rgba(52,58,101,.05),
+    inset 0 -28px 36px -32px rgba(52,58,101,.55)}
+/* Under the bevel, over the pane's own paint: every pane is a fixed or z-indexed box, so its
+   stacking context is already there for the surface to paint in. */
+.glass-surface{position:absolute;inset:0;z-index:-2;display:block;width:100%;height:100%;border-radius:inherit;pointer-events:none}
+/* Surfaces over dense or dark content stay harder to see through, so their text stays legible. */
+.metadata-float,.video-overlay .sidebar,.video-overlay .video-player-dock{--glass-alpha:calc(.96 - var(--glass-clarity,1) * .44)}
+.glass-bar,.glass-panel,.sidebar,.bottom-pill,.video-overlay .video-player-dock{border:1px solid rgba(255,255,255,.16);box-shadow:0 16px 40px rgba(52,58,101,.12),0 2px 5px rgba(52,58,101,.06),var(--glass-bevel)}
+/* The hairline rim is static on purpose: a gradient that changed every frame would have to be
+   re-rasterised across every pane. It is a masked 1px ring, so the white sits on the edge and
+   nothing of it reaches into the pane, and it runs from its brightest at the left edge to almost
+   nothing at the right — the light in this design comes from the left. */
+.glass-bar::after,.glass-panel::after,.sidebar::after,.topbar::after,.bottom-pill::after,.pill-bubble.is-raised::after,.video-overlay .video-player-dock::after{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;opacity:.55;pointer-events:none;
+  background:linear-gradient(90deg,rgba(255,255,255,1) 0%,rgba(255,255,255,.52) 34%,rgba(255,255,255,.2) 66%,rgba(255,255,255,.05) 100%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  mask-composite:exclude}
+.glass-bar{position:fixed;overflow:hidden;animation:bar-rise .5s cubic-bezier(.22,.9,.25,1) both}
+/* translate/scale (not transform) so the rail keeps its translateX(-50%) centring.
+   No opacity here: an ancestor that animates opacity becomes a backdrop root, and the pane's
+   backdrop-filter is then confined to the (empty) pane itself - the frost vanishes. */
+@keyframes bar-rise{from{translate:0 26px;scale:.97}to{translate:0 0;scale:1}}
+.glass-bar.audio-playing{box-shadow:0 16px 40px rgba(52,58,101,.14),0 0 30px rgba(229,72,77,.22),inset 0 0 0 1px rgba(255,255,255,.05),var(--glass-bevel)}
+/* The pulse rides the rim hairline: the shine paints its own gradient, so it can fade freely. */
+.glass-bar.audio-playing::after{animation:ring-pulse 3.4s ease-in-out infinite alternate}
+@keyframes ring-pulse{from{opacity:.72}to{opacity:1}}
+.glass-bar>.now-playing,.glass-bar>.player-controls,.glass-bar>.player-actions{position:relative}
+.glass-bar .mini-cover{position:relative}
+.glass-bar .mini-cover.is-playing::after{content:"";position:absolute;inset:-3px;z-index:-1;border-radius:14px;background:conic-gradient(from 0deg,#ff8f93,#ffa4c4,#ff8f93);filter:blur(5px);animation:cover-spin 3.6s linear infinite}
+@keyframes cover-spin{to{rotate:1turn}}
+.now-playing-copy small.is-error{color:#c3554a}
+
+/* Three glass buttons on the right: lyrics, projects, and a volume control that unfolds. */
+.bar-cluster{gap:8px}
+/* Small frosted tiles on top of the bar's own frost: a lighter tint, a tighter blur, and the
+   state fills applied straight to the button (the icon is in-flow content and always paints above). */
+.glass-button{width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:calc(12px * var(--glass-radius,1));color:var(--chip-ink);background:var(--chip);border:1px solid var(--chip-line);box-shadow:0 6px 16px rgba(52,58,101,.14),inset 0 1px 0 rgba(255,255,255,.7),inset 0 -1px 0 rgba(52,58,101,.1);-webkit-backdrop-filter:blur(min(10px,var(--glass-blur,12px))) saturate(170%);backdrop-filter:blur(min(10px,var(--glass-blur,12px))) saturate(170%);transition:transform .18s ease,color .2s ease,background .2s ease,box-shadow .2s ease}
+
+.glass-button:active{transform:scale(.93)}
+.glass-button.is-active{color:#fff;border-color:rgba(255,255,255,.5);background:linear-gradient(135deg,rgba(255,143,147,.92),rgba(229,72,77,.92));box-shadow:0 8px 20px rgba(229,72,77,.42),inset 0 1px 0 rgba(255,255,255,.45)}
+/* The cluster is a capsule that fills in as the slider unfolds: closed it is only the speaker tile,
+   opened the tile drops its own chrome and the group becomes one light pill holding icon and bar.
+   The padding is worn in both states, so nothing shifts when it opens. */
+.volume-cluster{display:flex;align-items:center;gap:6px;padding:4px;border-radius:999px;background:transparent;transition:background .25s ease,box-shadow .25s ease}
+.volume-cluster.is-open{background:rgba(255,255,255,.62);box-shadow:0 8px 20px rgba(52,58,101,.13),inset 0 1px 0 rgba(255,255,255,.8)}
+.volume-cluster.is-open .glass-button{background:none;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;color:var(--chip-ink-2)}
+.volume-slider{display:flex;align-items:center;width:0;opacity:0;overflow:hidden;transition:width .3s cubic-bezier(.22,.9,.25,1),opacity .22s ease}
+.volume-cluster.is-open .volume-slider{width:96px;opacity:1}
+.volume-slider input{width:96px;margin:0 4px;height:14px;--track-h:6px;appearance:none;-webkit-appearance:none;background:none;cursor:pointer;color:var(--accent)}
+/* While the pill is open the two buttons to its left step aside, so the bar it uncovers is room the
+   cluster already had rather than width pushed onto the rest of the player. Each takes one gap with
+   it (the cluster's 8px) so the pill lands flush against the next control. */
+.bar-tool{transition:width .28s cubic-bezier(.22,.9,.25,1),padding .28s cubic-bezier(.22,.9,.25,1),opacity .16s ease,margin .28s cubic-bezier(.22,.9,.25,1),transform .18s ease,color .2s ease,background .2s ease,box-shadow .2s ease,visibility .28s}
+.bar-cluster.is-volume-open .bar-tool{width:0;padding:0;margin-right:-8px;opacity:0;visibility:hidden;overflow:hidden;border-width:0;pointer-events:none}
+
+/* The bar's right-hand cluster (lyrics, projects, volume) is always on: it was hover-revealed
+   until 2026-09-30, and the user asked for it to stop hiding — the three buttons have to be
+   reachable without first putting the pointer on the bar. */
+.glass-bar .player-actions{opacity:1;visibility:visible;translate:0 0}
+/* The bar's own glyphs — three tool icons and the speaker — hold no text, so no text run ever
+   wears a mix for them; they read the pane's own, which is why the sampler now writes one on
+   every pane. Black on paper, white over a dark frame, and purple the moment the pointer is on
+   them, exactly like the navigation's items. */
+.glass-bar .player-actions{color:color-mix(in srgb,#fff var(--ink-mix,0%),#000)}
+
+/* Settings is a page of its own, not a rail: it takes the whole right-hand area beside the
+   navigation, so every dial can be judged against the surfaces it moves while the navigation
+   stays put. Wide enough for the controls to breathe, narrow enough that a line of the hint
+   stays readable. */
+@keyframes rail-in{from{translate:22px 0}to{translate:0 0}}
+.settings-page{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:20px;animation:rail-in .3s cubic-bezier(.22,.9,.25,1) both}
+.settings-page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.settings-page-head h1{margin:6px 0 6px;font:600 clamp(26px,3vw,34px)/1.1 -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif}
+.settings-card{padding:24px}
+.settings-page-body{margin-top:18px;display:flex;flex-direction:column;gap:16px}
+/* Swatches are the tint and the backdrop presets: the colour is the control, so the chip is the
+   whole target, and the ring on the chosen one is the same ring the nav uses for the live page. */
+.swatch-row{display:flex;flex-wrap:wrap;gap:10px}
+.swatch{width:40px;height:40px;border-radius:14px;border:1px solid rgba(52,58,101,.14);box-shadow:0 2px 6px rgba(52,58,101,.1);position:relative;padding:0}
+.swatch.is-on{box-shadow:0 0 0 2px #fff,0 0 0 4px #e5484d,0 2px 6px rgba(52,58,101,.14)}
+.swatch-custom{display:grid;place-items:center;overflow:hidden;background:conic-gradient(#ff8a8a,#ffe08a,#8affa1,#8ad8ff,#c08aff,#ff8ad8,#ff8a8a)}
+.swatch-custom input{width:150%;height:150%;border:0;padding:0;background:none;cursor:pointer;opacity:0}
+.toggle-row{display:flex;align-items:center;gap:10px;color:var(--ink);font-size:13px}
+.toggle-row input{width:16px;height:16px;accent-color:#e5484d}
+.segmented{display:inline-flex;gap:4px;padding:4px;border-radius:999px;background:rgba(229,72,77,.08)}
+.segmented button{padding:7px 16px;border-radius:999px;background:none;color:var(--muted);font-size:12.5px;transition:background .2s,color .2s}
+.segmented button.is-on{background:var(--panel);color:var(--accent-ink);box-shadow:0 2px 6px rgba(52,58,101,.12)}
+.bg-image-row{display:flex;gap:10px;align-items:center}
+.settings-body{margin-top:16px;min-height:0;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;gap:16px}
+.settings-hint{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.6}
+
+/* ── Ink that follows the backdrop ───────────────────────────────────────────
+   lib/inkSampler.ts reads what is behind each run of text on a pane and writes --ink-mix: how far
+   that run's ink has to travel from the colour drawn here toward the light counterpart it needs on
+   a dark scene. 0% on the paper-white page, 100% over a dark frame, and — because the scale is a
+   ramp and not a switch — a grey part-way between on a mixed or middling one.
+   Judged where the glyphs are, not per pane: a tall pane can straddle a pale page and a dark cover,
+   and one ink cannot be read on both. Only the runs listed here adapt; anything carrying its own
+   fill — a nav chip, the glass buttons, the fields, the purple queue button — keeps its own
+   colours, and every run below keeps the colour it was designed with at 0%. */
+:is(.brand>span,.now-playing strong,.glass-panel-head h3,.profile strong,.metadata-float-header h2)[data-ink],:is(.brand>span,.now-playing strong,.glass-panel-head h3,.profile strong,.metadata-float-header h2) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#171b2d;--ink-top:#f6f7fc;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.lyrics-body)[data-ink],:is(.lyrics-body) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#3f455c;--ink-top:#e6e9f6;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.project-list-row:where(:not(:hover)):where(:not(.is-current)):where(:not(.is-queued)),.project-list-row:where(:not(.is-current)):where(:not(.is-queued)) .project-list-name)[data-ink],:is(.project-list-row:where(:not(:hover)):where(:not(.is-current)):where(:not(.is-queued)),.project-list-row:where(:not(.is-current)):where(:not(.is-queued)) .project-list-name) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#5f6580;--ink-top:#dde1f1;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.nav-item:where(:not(.active)):where(:not(:hover)),.icon-button,.menu-button)[data-ink],:is(.nav-item:where(:not(.active)):where(:not(:hover)),.icon-button,.menu-button) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#000;--ink-top:#fff;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.player-actions)[data-ink],:is(.player-actions) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#000;--ink-top:#fff;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.profile .muted)[data-ink],:is(.profile .muted) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#8a90a2;--ink-top:#d0d5e8;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.range-control span)[data-ink],:is(.range-control span) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#858b9d;--ink-top:#ccd2e6;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.glass-empty,.playlist-empty,.settings-hint)[data-ink],:is(.glass-empty,.playlist-empty,.settings-hint) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#7d8498;--ink-top:#c9d0e4;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.now-playing small,.progress-wrap,.profile small)[data-ink],:is(.now-playing small,.progress-wrap,.profile small) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#9398aa;--ink-top:#d5daeb;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.eyebrow)[data-ink],:is(.eyebrow) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#a0a5b5;--ink-top:#dde1ee;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.breadcrumbs)[data-ink],:is(.breadcrumbs) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#a3a8b7;--ink-top:#dfe2ef;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.breadcrumbs strong)[data-ink][data-ink],:is(.breadcrumbs strong) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#34394e;--ink-top:#ebedf8;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.nav-count)[data-ink][data-ink],:is(.nav-count) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#9da3b5;--ink-top:#dbdfec;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.project-list-row small)[data-ink][data-ink],:is(.project-list-row small) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#9aa0b3;--ink-top:#d9deeb;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.range-control b)[data-ink][data-ink],:is(.range-control b) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#d6404a;--ink-top:#ffc9cb;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+[data-glass-edge] :is(.brand>span,.eyebrow,.nav-item,.nav-count,.breadcrumbs,.breadcrumbs strong,.now-playing strong,.now-playing small,.progress-wrap,.player-actions,.icon-button,.menu-button,.profile strong,.profile small,.glass-panel-head h3,.lyrics-body,.project-list-row,.glass-empty,.playlist-empty,.settings-hint,.project-list-name,.range-control span,.range-control b),[data-ink]{transition:color .28s ease}
+/* The bar's title is a primary label like the navigation's: exactly black on paper and exactly
+   white over a dark frame, not the near-black the pane headings use. Declared after the families
+   above, which it has to out-order to be read at all. */
+:is(.now-playing strong)[data-ink],:is(.now-playing strong) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#000;--ink-top:#fff}
+/* The small screen's pill is the same navigation in another shape, so its labels read exactly like
+   the sidebar's, and the item that is current wears the studio's accent with a light counterpart
+   for the dark frames, where the authored accent would sink into the glass. Each of these has to
+   carry the whole mix, not just its ends: the sidebar's family does, and a family that only names
+   --ink-base/--ink-top leaves the words at the authored black however dark the glass behind them
+   goes — which is exactly what the pill did until the labels were given the mix too. */
+:is(.pill-item:where(:not(.is-current)))[data-ink],:is(.pill-item:where(:not(.is-current))) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#000;--ink-top:#fff;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+:is(.pill-item.is-current,.nav-item.active,.nav-item:hover)[data-ink],:is(.pill-item.is-current,.nav-item.active,.nav-item:hover) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#d6404a;--ink-top:#ffb3b6;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+
+/* Panels opened from the bar: the same glass as the rail and the bar. */
+.glass-panel{position:fixed;z-index:9;display:flex;flex-direction:column;padding:16px 18px;border-radius:calc(22px * var(--glass-radius,1));overflow:hidden;animation:panel-in .3s cubic-bezier(.22,.9,.25,1) both}
+/* Opacity-free for the same reason as bar-rise: it would kill the pane's backdrop-filter. */
+@keyframes panel-in{from{translate:0 14px;scale:.97}to{translate:0 0;scale:1}}
+/* Lyrics have no edge: no hairline, no rim, no border — the sheet thins out into the page instead,
+   so the words read as floating over whatever is behind them rather than as a card. The mask has
+   to sit on this element and not on a wrapper: a mask on an ancestor makes that ancestor the
+   backdrop root, and the pane's own backdrop-filter would then be blurring an empty box. */
+.lyrics-panel{left:50%;bottom:100px;width:min(560px,calc(100vw - 32px));max-height:min(46vh,420px);transform:translateX(-50%);
+  border-color:transparent;box-shadow:0 24px 60px rgba(52,58,101,.08);
+  -webkit-mask-image:linear-gradient(to bottom,#0000 0,#000 min(24px,18%),#000 calc(100% - min(28px,22%)),#0000 100%),linear-gradient(to right,#0000 0,#000 26px,#000 calc(100% - 26px),#0000 100%);
+  mask-image:linear-gradient(to bottom,#0000 0,#000 min(24px,18%),#000 calc(100% - min(28px,22%)),#0000 100%),linear-gradient(to right,#0000 0,#000 26px,#000 calc(100% - 26px),#0000 100%);
+  -webkit-mask-composite:source-in;mask-composite:intersect}
+.lyrics-panel::after{content:none}
+.projects-panel{right:18px;bottom:100px;width:min(330px,calc(100vw - 32px));max-height:min(58vh,520px)}
+/* The sheet hangs over the bar, so it is centred on the bar and not on the window: past 680px the
+   bar itself is nudged right of the navigation rail, and a sheet centred on the viewport sat half
+   a rail's width off the thing it belongs to. Below 680px the bar is centred, so the base rule
+   above already lines the two up. */
+@media(min-width:681px){.lyrics-panel{left:calc(50% + 134px);width:min(560px,calc(100% - 300px))}}
+@media(max-width:900px) and (min-width:681px){.lyrics-panel{left:calc(50% + 120px);width:calc(100% - 270px)}}
+.glass-panel-head{display:flex;align-items:start;justify-content:space-between;gap:12px}
+.glass-panel-head h3{margin:0;font:600 15px -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;letter-spacing:-.03em;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.glass-empty{margin:12px 0 0;color:var(--muted);font-size:12px;line-height:1.6}
+/* The lines fade where the sheet's own fade is not enough: text scrolling out of a masked pane
+   would otherwise be cut off mid-glyph by the mask above it. Plain element, no backdrop-filter,
+   so a mask here costs nothing and has nothing to break. */
+.lyrics-body{margin-top:12px;padding-right:6px;overflow-y:auto;color:#3f455c;font-size:13px;line-height:1.9;
+  -webkit-mask-image:linear-gradient(to bottom,#0000 0,#000 16px,#000 calc(100% - 18px),#0000 100%);
+  mask-image:linear-gradient(to bottom,#0000 0,#000 16px,#000 calc(100% - 18px),#0000 100%)}
+.lyrics-body p{margin:0 0 10px;animation:line-in .35s ease both}
+@keyframes line-in{from{opacity:0;translate:0 6px}to{opacity:1;translate:0 0}}
+.project-list{margin-top:12px;overflow-y:auto}
+.project-list-group+.project-list-group{margin-top:14px}
+.project-list-row{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;border-radius:11px;background:none;color:#5f6580;font-size:12px;text-align:left;transition:background .18s ease,color .18s ease}
+.project-list-row:hover{background:var(--panel2);color:var(--accent-ink)}
+.project-list-row.is-current{background:linear-gradient(135deg,rgba(255,143,147,.28),rgba(229,72,77,.2));color:var(--accent-ink)}
+.project-list-row.is-queued{color:#8a90a2}
+.project-list-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-list-row small{color:#9aa0b3;font:10px ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* Prefetch hints live in the document: Safari only buffers media elements that are attached. */
+.prefetch-host{position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
+
+/* The dock floats over the video and frosts it. */
+.video-overlay .video-player-dock{overflow:hidden}
+.video-overlay .video-player-dock .mini-cover{position:relative}
+
+/* Video card artwork: the first frame is the poster; the clip plays while hovered. */
+.project-art{position:relative}
+.media-thumb{position:absolute;inset:0;display:block}
+.media-thumb video{width:100%;height:100%;object-fit:cover;display:block}
+.thumb-fallback{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;width:100%;height:100%;padding:0 14px;color:#fff;text-align:center}
+.thumb-fallback small{font-size:10px;line-height:1.5;opacity:.9}
+
+/* Transport: each toggle mounts a fresh svg, so the icon pops over without any state of its own. */
+/* Pressing play is the one moment worth a slow animation: the glyph swells and a ring leaves it,
+   while the icon swap keeps its own quick pop underneath. Only descendants animate — an opacity
+   on the button itself would make it a backdrop root and put out the frost behind it. */
+@keyframes play-swell{0%{scale:1}26%{scale:1.18}100%{scale:1}}
+@keyframes play-ripple{from{scale:.55;opacity:.5}to{scale:1.75;opacity:0}}
+.player-button,.now-play{position:relative}
+.player-button.is-starting svg,.now-play.is-starting svg{animation:play-swell .9s cubic-bezier(.22,.9,.25,1)}
+.player-button.is-starting::after,.now-play.is-starting::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:2px solid currentColor;pointer-events:none;animation:play-ripple .9s cubic-bezier(.22,.9,.25,1)}
+@keyframes player-pop{from{transform:scale(.6);opacity:.45}60%{transform:scale(1.14)}to{transform:scale(1);opacity:1}}
+.player-button svg{animation:player-pop .32s cubic-bezier(.22,.9,.25,1)}
+
+@media(max-width:900px){.player.glass-bar{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) auto}.player.glass-bar .player-actions{display:flex}}
+@media(max-width:680px){.player.glass-bar{grid-template-columns:minmax(0,1fr) auto}.player.glass-bar .player-actions{display:flex}.lyrics-panel{bottom:92px}.projects-panel{right:10px;bottom:92px;width:calc(100vw - 20px)}}
+@media(max-width:680px){.settings-page-head{flex-direction:column;align-items:stretch}.settings-card{padding:18px}}
+@media(prefers-reduced-motion:reduce){.ambient-orb,.glass-bar,.glass-bar.audio-playing::after,.glass-bar .mini-cover.is-playing::after,.lyrics-body p,.glass-panel,.settings-page,.player-button svg,.player-button.is-starting::after,.now-play.is-starting::after,.now-view{animation:none!important}}
+
+/* ── The small screen's navigation ───────────────────────────────────────────
+   Below 680px the sidebar is not rendered at all: these five items are the whole of the
+   navigation, and the pill floats at the foot of the screen with the player bar above it. */
+@keyframes pill-in{from{translate:0 22px}to{translate:0 0}}
+.bottom-pill{position:fixed;z-index:8;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);height:var(--pill-h,64px);display:flex;align-items:stretch;padding:6px;border-radius:999px;touch-action:none;user-select:none;-webkit-user-select:none;animation:pill-in .3s cubic-bezier(.22,.9,.25,1) both}
+/* The item itself is not a run — its icon is an SVG and its words live in a child span — so it
+   wears the mix the pane carries for exactly that case: the glyphs and the words under them stay
+   one colour however dark or light the glass under the pill goes. */
+.pill-item{position:relative;z-index:1;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 2px;border-radius:999px;background:none;--ink-base:#000;--ink-top:#fff;color:color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base));font-size:10.5px;transition:color .2s}
+.pill-item.is-current{--ink-base:#d6404a;--ink-top:#ffb3b6}
+.pill-icon{display:grid;place-items:center;height:20px}
+.pill-label{line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.pill-count{position:absolute;top:4px;left:50%;translate:14px 0;font:9px -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;font-variant-numeric:tabular-nums;color:var(--ink-soft,#9da3b5)}
+/* The bubble has two faces, and a hover moves neither of them. At rest it is the capsule the
+   current item wears: semi-transparent — its clarity is what Settings says — and with no frost of
+   its own, so the pill's own content stays as sharp as it was; nothing is drawn along its edge.
+   Pressed, the veil lets go and the glass comes up: the capsule fades from that half-transparent
+   tint to fully clear while the rim bend arrives with it, over the same transition, so the change
+   reads as one thing rather than a switch, and the lit hairline and the bevel above give the
+   result its body. The bend is held to this tile's own ceiling (`--glass-band-cap` /
+   `--glass-pull-cap`): a capsule this short cannot wear the band the sliders give the tall panes
+   without the whole tile turning into rim. Both edges of both axes bend — the map carries the
+   horizontal pull in R and the vertical in G, so the top and bottom rims refract exactly as the
+   left and right ones do. */
+.pill-bubble{position:absolute;z-index:0;left:0;top:5px;bottom:5px;width:var(--bubble-w,0px);border-radius:999px;
+  translate:var(--bubble-x,0px) 0;pointer-events:none;
+  /* Below the pill's own veil, so the capsule reads as a clearer window in it rather than a
+     second coat of the same white. The Clarity slider moves both. */
+  --glass-alpha:calc(.58 - var(--glass-clarity,1) * .3);
+  --glass-band-cap:22px;
+  --glass-pull-cap:15px;
+  -webkit-backdrop-filter:saturate(170%);
+  backdrop-filter:saturate(170%);
+  box-shadow:0 8px 18px rgba(20,22,36,.16),0 1px 3px rgba(20,22,36,.1);
+  transition:translate .32s cubic-bezier(.22,.9,.25,1),width .28s cubic-bezier(.22,.9,.25,1),top .22s cubic-bezier(.22,.9,.25,1),bottom .22s cubic-bezier(.22,.9,.25,1),scale .22s cubic-bezier(.22,.9,.25,1),background-color .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}
+/* Raised, the veil is gone and the frost and the bend have arrived: the capsule is clear glass
+   over the pill, its rim bending the icons and labels it is covering — the same map and the same
+   Settings every pane's edge is built from, held to this tile's own 13px/9px ceiling. It grows by
+   filling the pill rather than by scaling, so it never leaves the pill's own outline. */
+/* Pressed it also grows, as one piece: a straight scale keeps a capsule's proportions and its
+   radius, and what it buys is the overhang — about 3px of glass past the pill on every side,
+   which is what reads as the capsule having been picked up rather than merely recoloured. */
+/* Pressed, it is glass and nothing else: the veil is gone, and so is any frost of its own — the
+   Blur and Clarity sliders do not reach this state, so what shows through is exactly what is
+   behind it, bent by the rim. What gives it a body instead of a flat wash is the light: a lit
+   hairline down the left edge, fading to the right (the rule above), over a bright top-left inset
+   and the same bevel the panes wear, which shades the lower edge and reads as thickness. */
+.pill-bubble.is-raised{--glass-alpha:0;top:1px;bottom:1px;z-index:2;scale:1.12;
+  -webkit-backdrop-filter:saturate(200%);
+  backdrop-filter:saturate(200%) var(--glass-edge-filter,saturate(100%));
+  box-shadow:0 12px 26px rgba(20,22,36,.24),0 2px 6px rgba(20,22,36,.16),inset 1px 1px 0 rgba(255,255,255,.65),inset -1px -1px 0 rgba(255,255,255,.2),var(--glass-bevel)}
+/* No stroke along the resting capsule — but the ring comes back the moment it is picked up (the
+   `:where()` keeps this rule at zero specificity, so the lit hairline above wins as soon as the
+   bubble is raised). That edge light, bright down the left and fading to the right, is most of
+   what makes the glass read as a solid object rather than a wash of colour. */
+:where(.pill-bubble)::after{content:none}
+/* While the finger is carrying it, the capsule follows with no easing of its own — but the
+   material still fades on its own clock, so the list keeps those terms rather than dropping the
+   whole transition (which is what used to make the fade snap). */
+.pill-bubble.is-dragging{transition:top .22s cubic-bezier(.22,.9,.25,1),bottom .22s cubic-bezier(.22,.9,.25,1),scale .22s cubic-bezier(.22,.9,.25,1),background-color .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}
+
+/* ── The small-screen shell ──────────────────────────────────────────────────
+   The sidebar is not rendered at all below 680px — the pill above is the navigation — and the
+   bar above the pill keeps only its play button, its song and its next-track button, as a
+   smaller, rounder pill than the desktop bar's. */
+@media(max-width:680px){
+  .sidebar{display:none}
+  .menu-button{display:none!important}
+  .studio-shell{padding-bottom:calc(var(--pill-h,64px) + 96px)}
+  .page-content{padding:32px 18px 178px}
+  /* The three right-hand buttons stay on the desktop bar at every width — the promise they were
+     given — but a phone has no room for them, and nothing brings them back. */
+  .player.glass-bar .player-actions,
+  .player.glass-bar .transport-extra,
+  .player.glass-bar .transport-step[aria-label="Previous song"],
+  .player.glass-bar .progress-wrap,
+  .player.glass-bar .now-playing-copy small{display:none!important}
+  .player.glass-bar{bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 18px);width:calc(100% - 20px);min-height:0;padding:8px 14px;border-radius:999px;grid-template-columns:minmax(0,1fr) auto;gap:12px}
+  .player.glass-bar .player-controls{gap:8px}
+  .player.glass-bar .mini-cover{width:42px;height:42px;border-radius:14px}
+  .player.glass-bar .player-button svg{width:24px;height:24px}
+  /* The sheets hang above the bar, and the bar is above the pill. */
+  .lyrics-panel{bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 86px)}
+  .projects-panel{right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 86px);width:calc(100vw - 20px)}
+  .video-overlay .video-player-dock{bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 18px)}
+}
+
+
+/* ── The bar's artwork tile ──────────────────────────────────────────────────
+   The tile is the song's cover when there is one, and a kind glyph when there is
+   not - never a monogram. Hovering it promises the full window: the expand glyph
+   fades in over the artwork, and a click opens the now-playing view. The promise
+   holds whether or not anything is playing, so the studio's empty tile opens the
+   same window onto its queue rather than sitting inert. */
+.mini-cover img{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
+.mini-cover-button{flex:none;display:block;padding:0;border-radius:11px;background:none;cursor:pointer}
+.mini-cover-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.mini-cover-expand{position:absolute;inset:0;display:grid;place-items:center;border-radius:inherit;background:rgba(20,22,34,.5);color:#fff;opacity:0;transition:opacity .2s ease}
+.mini-cover-button:focus-visible .mini-cover-expand{opacity:1}
+
+/* The play/pause is a solid glyph, not a filled disc: no chrome of its own, and
+   nothing changes under the pointer. It is scoped to the bar so the video dock's
+   own purple button keeps its look. */
+.glass-bar .player-button{width:auto;height:auto;padding:5px;border-radius:0;background:none;box-shadow:none;color:var(--ink)}
+.glass-bar .player-button:disabled{opacity:.3}
+/* Step and mode buttons: plain icons beside the glyph. Shuffle and repeat are
+   only offered when the list holds more than one audio file, and they light up
+   in the studio's purple while they are on. */
+.transport-step,.transport-extra{display:grid;place-items:center;padding:4px;border-radius:9px;background:none;color:var(--ink);transition:color .18s ease}
+.transport-step:disabled,.transport-extra:disabled{opacity:.28;cursor:default}
+.transport-extra{color:var(--muted)}
+.transport-extra.is-on{color:var(--accent)}
+
+/* ── Now playing, full window ────────────────────────────────────────────────
+   Not the browser's fullscreen: a surface inside the app, painted with the
+   artwork's own colour - sampled by the page - over a near-black base, and the
+   studio's purple when the song has no cover. The stage is centred on the left,
+   the songs that come next stand on the right. */
+.now-view{position:fixed;inset:0;z-index:65;display:flex;flex-direction:column;padding:20px clamp(20px,4vw,54px) 28px;overflow:hidden;overscroll-behavior:contain;animation:now-rise .26s cubic-bezier(.16,1,.3,1) both}
+/* The fullscreen player rises from the foot of the screen and, on the way out, falls back
+   through it. translate only, never opacity: the now view carries the glass queue sheet,
+   and an opacity on this ancestor would make it a backdrop root and put its frost out. */
+@keyframes now-rise{from{translate:0 102%}to{translate:0 0}}
+@keyframes now-fall{from{translate:0 0}to{translate:0 102%}}
+.now-view.is-closing{animation:now-fall .22s cubic-bezier(.5,0,.9,.4) both}
+.video-overlay{animation:now-rise .26s cubic-bezier(.16,1,.3,1) both}
+@keyframes now-in{from{opacity:0;scale:.985}to{opacity:1;scale:1}}
+.now-backdrop{position:absolute;inset:0;background:radial-gradient(115% 80% at 14% -6%,rgba(var(--np-tint,229 72 77) / .62),rgba(var(--np-tint,229 72 77) / .2) 40%,rgba(8,9,15,0) 70%),radial-gradient(95% 65% at 52% 118%,rgba(var(--np-tint,229 72 77) / .3),rgba(8,9,15,0) 62%),linear-gradient(165deg,#16171f,#0b0c13 58%,#07080d)}
+.now-head{position:relative;display:flex;align-items:center;gap:14px;flex:none}
+.now-close{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.14);color:#fff;transition:background .2s ease}
+.now-close:hover{background:rgba(255,255,255,.26)}
+.now-kicker{margin:0;color:rgba(255,255,255,.6);font:500 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase}
+/* Volume, wearing the bar's own state at the top-right of the window: the pill the reference shows —
+   a wide track with a tall white knob and the speaker at its end, the level ticked off at the left
+   hairline. It frosts what is behind it like every other surface, and its speaker mutes and restores. */
+.now-volume{margin-left:auto;display:flex;align-items:center;gap:12px;height:44px;padding:0 12px 0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.12);box-shadow:inset 1px 0 0 rgba(255,255,255,.34),inset 0 1px 0 rgba(255,255,255,.28);-webkit-backdrop-filter:blur(18px) saturate(150%);backdrop-filter:blur(18px) saturate(150%)}
+.now-volume input{width:clamp(96px,17vw,186px);height:26px;margin:0;appearance:none;-webkit-appearance:none;background:none;cursor:pointer;color:#fff}
+.now-volume input::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(to right,currentColor var(--seek,0%),rgba(255,255,255,.26) var(--seek,0%))}
+.now-volume input::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:26px;margin-top:-10px;border-radius:8px;background:#fff;box-shadow:0 2px 7px rgba(4,5,12,.5)}
+.now-volume input::-moz-range-track{height:6px;border-radius:999px;background:rgba(255,255,255,.26)}
+.now-volume input::-moz-range-progress{height:6px;border-radius:999px;background:#fff}
+.now-volume input::-moz-range-thumb{width:15px;height:26px;border:0;border-radius:8px;background:#fff;box-shadow:0 2px 7px rgba(4,5,12,.5)}
+.now-volume-icon{display:grid;place-items:center;padding:2px;background:none;color:rgba(255,255,255,.86);transition:color .18s ease}
+.now-volume-icon:hover{color:#fff}
+@media(max-width:680px){.now-volume input{width:84px}}
+.now-body{position:relative;flex:1;min-height:0;margin-top:clamp(8px,2.6vh,30px);display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:clamp(22px,4vw,58px);align-items:center;transition:grid-template-columns .38s cubic-bezier(.22,.9,.25,1),gap .38s cubic-bezier(.22,.9,.25,1)}
+/* The right column is the corner switch's disclosure, not a fixture: closed it takes no width at
+   all, so the stage — and the transport at its centre — stands in the middle of the window. */
+.now-body.is-drawer-closed{grid-template-columns:minmax(0,1fr) minmax(0,0px);gap:0}
+.now-drawer{position:relative;min-width:0;align-self:stretch;display:flex;flex-direction:column;justify-content:center}
+.now-stage{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(12px,2.2vh,24px);text-align:center}
+.now-art{width:min(42vh,420px);max-width:100%;aspect-ratio:1/1;border-radius:22px;overflow:hidden;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#e5484d,#8f2027);box-shadow:0 38px 74px rgba(4,5,12,.55),0 3px 10px rgba(4,5,12,.4)}
+.now-art.is-empty{background:linear-gradient(135deg,rgba(255,255,255,.18),rgba(255,255,255,.05));color:rgba(255,255,255,.72)}
+.now-art img{width:100%;height:100%;object-fit:cover;display:block}
+.now-art-wrap{position:relative}
+.now-titles{max-width:min(560px,100%)}
+.now-titles h2{margin:0;color:#fff;font:600 clamp(23px,3.2vw,38px) -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;letter-spacing:-.05em}
+.now-progress{flex:0 0 auto;width:min(600px,100%);color:rgba(255,255,255,.66)}
+.now-progress input{color:#fff}
+.now-transport{display:flex;align-items:center;justify-content:center;gap:clamp(12px,3vw,32px);padding-top:2px}
+.now-transport button{display:grid;place-items:center;padding:6px;background:none;color:rgba(255,255,255,.82);transition:color .18s ease,transform .18s ease}
+.now-transport button:hover:not(:disabled):not(.now-play){color:#fff;transform:scale(1.07)}
+.now-transport button:disabled{opacity:.3;cursor:default}
+.now-transport .now-play{width:min(74px,15vh);height:min(74px,15vh);padding:0;border-radius:50%;background:#fff;color:#12141d;box-shadow:0 16px 32px rgba(4,5,12,.45)}
+/* The disc is already white, so the row's hover colour would paint its glyph white on white and
+   leave a blank circle; it answers the pointer with scale alone and keeps the dark glyph. */
+.now-transport .now-play:hover{background:#fff;transform:scale(1.04)}
+.now-queue{min-width:0;height:min(62vh,560px);display:flex;flex-direction:column;padding:18px 10px 18px 18px;border-radius:24px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.07);-webkit-backdrop-filter:blur(20px) saturate(150%);backdrop-filter:blur(20px) saturate(150%);transition:opacity .26s ease,transform .38s cubic-bezier(.22,.9,.25,1),visibility .38s}
+.now-body.is-drawer-closed .now-queue{opacity:0;visibility:hidden;pointer-events:none;transform:translateX(18px)}
+.now-queue header{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.now-queue-copy{min-width:0}
+.now-queue h3{margin:0;color:#fff;font:600 17px -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;letter-spacing:-.03em}
+.now-queue header p{margin:5px 0 0;color:rgba(255,255,255,.55);font-size:12px}
+/* Two panels behind one control: the songs that follow, or the words. The active
+   side is a filled disc inside the outlined capsule, as in the reference. */
+/* Pinned to the view's bottom-right corner rather than the panel's head: the switch is the one
+   control that stays put whatever the panel is doing, so it is anchored to the drawer's own corner —
+   the drawer stretches to the body's full height and ends at the view's padding edge. */
+.now-switch{position:absolute;right:0;bottom:0;display:flex;align-items:center;gap:2px;padding:3px;border-radius:999px;border:1px solid rgba(255,255,255,.22)}
+.now-switch button{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:none;color:rgba(255,255,255,.82);transition:background .2s ease,color .2s ease}
+.now-switch button:hover{color:#fff}
+.now-switch button.is-on{background:#fff;color:#12141d}
+.now-queue ol,.now-lyrics{flex:1;min-height:0;margin:14px 0 0;padding:0 8px 0 0;overflow-y:auto}
+.now-queue ol{list-style:none;display:flex;flex-direction:column;gap:3px}
+.now-lyrics{padding-right:10px;color:rgba(255,255,255,.8);font-size:14px;line-height:1.85;
+  -webkit-mask-image:linear-gradient(to bottom,#0000 0,#000 18px,#000 calc(100% - 20px),#0000 100%);
+  mask-image:linear-gradient(to bottom,#0000 0,#000 18px,#000 calc(100% - 20px),#0000 100%)}
+/* The words carry the focus, so the panel behind them is not a sheet of glass: no veil, no rim,
+   no blur of what is behind it — the stage's own backdrop comes through untouched and only the
+   lyrics soften, line by line, with the distance from the middle of the sheet (--lyric-focus is
+   1 there and 0 at the edge; page.tsx repaints it as the sheet scrolls). */
+.now-queue.is-lyrics{background:none;border-color:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+.now-lyrics p{--lyric-focus:1;margin:0 0 11px;opacity:calc(.42 + .58 * var(--lyric-focus));filter:blur(calc((1 - var(--lyric-focus)) * (1 - var(--lyric-focus)) * 3.4px))}
+/* Nothing to show: the note about it belongs in the middle of the sheet, not pinned to its top. */
+.now-lyrics:has(.now-empty){display:grid;place-content:center;text-align:center}
+.now-lyrics .now-empty{--lyric-focus:1}
+/* The phone has no sheet for the words: they stand in the same rectangle the cover is centred in
+   — the window above the player block, which page.tsx measures into --now-upper-top and
+   --now-upper-bottom — three big lines of them, with the cover gone from under them. It is the
+   same element either way: the focus and the way a line softens with its distance from the middle
+   still apply, only its box changes, so the rules below are read after the panel's. Anywhere else
+   this box is not shown at all: there the words keep their own panel and are read from the top
+   down. */
+.now-words{position:absolute;left:0;right:0;top:calc(-1 * var(--now-upper-top,0px));bottom:calc(-1 * var(--now-upper-bottom,0px));display:none;height:fit-content;max-height:calc(1.5em * 3);margin:auto 0;padding:0 4px;font-size:clamp(20px,6.6vw,28px);line-height:1.5;
+  /* The panel's own mask fades a tall column at both ends. Three lines have no ends to fade —
+     it would only wash the first and last of them — so the softening here is the lines' own
+     distance from the middle of the block, and nothing else. */
+  -webkit-mask-image:none;mask-image:none}
+.now-words p{margin:0}
+.now-row{display:flex;align-items:center;gap:11px;width:100%;padding:8px 10px;border-radius:12px;background:none;color:rgba(255,255,255,.82);text-align:left;transition:background .18s ease}
+.now-row:hover{background:rgba(255,255,255,.1)}
+.now-row.is-current{background:rgba(255,255,255,.17)}
+.now-row-art{width:38px;height:38px;flex:none;border-radius:10px;overflow:hidden;display:grid;place-items:center;background:rgba(255,255,255,.14);color:rgba(255,255,255,.8)}
+.now-row-art img{width:100%;height:100%;object-fit:cover;display:block}
+.now-row-copy{min-width:0;display:block}
+.now-row-copy strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,.92);font-size:13px;font-weight:500}
+.now-row-copy small{display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,.55);font-size:11px}
+.now-empty{padding:14px 10px;color:rgba(255,255,255,.55);font-size:12px}
+.now-lyrics .now-empty{padding:0}
+/* Stacked: the panel drops under the stage, so the switch keeps the same corner by hanging at the
+   top of that row - the drawer reserves its strip, and the panel opens below the switch rather than
+   pushing it off the bottom of a window only a panel tall. */
+@media(max-width:900px){.now-body{grid-template-columns:1fr;align-content:start;overflow-y:auto;row-gap:22px}.now-body.is-drawer-closed{grid-template-columns:1fr;row-gap:22px}.now-drawer{padding-top:54px}.now-switch{top:0;bottom:auto}.now-body.is-drawer-closed .now-queue{display:none}.now-queue{height:min(44vh,340px)}}
+@media(max-width:680px){.now-view{padding:16px 16px 22px}.now-art{width:min(34vh,300px)}.now-progress{position:static;left:auto;right:auto;bottom:auto}.now-transport .now-play{width:58px;height:58px}}
+
+/* ── The small screen's fullscreen player ────────────────────────────────────
+   One column, art above controls, and the lyrics as a sheet that rises from the foot of the
+   screen over the bar rather than as a second column that has to be found behind a button. */
+@media(max-width:680px){
+  .now-view{padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px)}
+  .now-body{display:flex;flex-direction:column;flex:1;min-height:0;margin-top:12px;overflow:hidden;gap:12px;transition:none}
+  .now-stage{position:relative;flex:1;justify-content:center;gap:clamp(10px,2vh,18px);touch-action:none}
+  /* The two round buttons are gone: the gestures below are the way to the lyrics now. */
+  .now-switch{display:none}
+  /* translate, never opacity: an opacity on the drawer's ancestor would make it the backdrop
+     root and put out the frost on the queue panel inside it. */
+  .now-drawer{position:absolute;left:-16px;right:-16px;bottom:-16px;z-index:3;height:min(74%,560px);padding-top:0;
+    translate:0 102%;visibility:hidden;pointer-events:none;
+    transition:translate .34s cubic-bezier(.22,.9,.25,1),visibility 0s linear .34s}
+  .now-body.is-drawer-open .now-drawer{translate:0 0;visibility:visible;pointer-events:auto;transition-delay:0s,0s}
+  .now-body.is-drawer-open .now-queue{opacity:1;visibility:visible;transform:none}
+  .now-queue{height:100%;border-radius:24px 24px 0 0;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 14px)}
+  /* The artwork leaves the window as the lyrics come up — the whole way, off the left edge, so
+     nothing of it is left lying over the sheet — and the same drag brings it back in. Half the
+     window plus half its own width is exactly its centred place taken out of view; the extra 8px
+     is so "gone" means gone at any width. The wrapper stays where it is and only the picture
+     travels: the slot it leaves is the one empty place on the stage, and the note about missing
+     words stands in the middle of it. */
+  /* The cover is centred in the window above the player block rather than in the column it sits
+     in: --now-lift is how far it has to rise for its own centre to land on that rectangle's (the
+     room above its slot, less the room below), measured by the page. It slides out along the same
+     line; the slot itself — what the words and the stand-in note are centred in — does not move. */
+  .now-art{translate:calc(var(--now-reveal,0) * (-50vw - 50% - 8px)) calc(-1 * var(--now-lift,0px));transition:translate .34s cubic-bezier(.22,.9,.25,1)}
+  .now-stage.is-dragging .now-art{transition:none}
+  /* The words come with the swipe, so they are never read while the cover is still in the slot.
+     Three lines at a time they are a column read downwards from the first line, standing at the
+     top of the artwork's slot: a centred column would leave its beginning above the top of the
+     box, out of reach of the scroll, and the words sit higher up the window besides. */
+  .now-words{display:flex;flex-direction:column;opacity:0;visibility:hidden;
+    transition:opacity .3s ease,visibility 0s linear .3s}
+  .now-body.is-drawer-open .now-words{opacity:1;visibility:visible;transition-delay:0s,0s}
+  /* One line of stand-in text is not a column to read downwards: it takes the middle of the same
+     upper space, where the cover's own label would be. */
+  .now-words:has(.now-empty){padding:0 26px}
+  .now-words .now-empty{font-size:15px}
+}
+
+/* ── The phone's top bar ─────────────────────────────────────────────────────
+   Not the wide layout's capsule: a slab glued to a 390px window would only eat the page, and
+   the navigation is the pill at the foot. What the top keeps is a haze. The bar stays where it
+   is while the page runs under it, two pixels of blur go over whatever is passing, and that
+   blur fades out on its way down — the page dissolves into the bar instead of being cut off by
+   it. Two pixels, always, and never var(--glass-blur): the frost dials in Settings belong to
+   the glass panes, and the edge of the window is not one of them. */
+@media(max-width:680px){
+  .studio-shell .topbar{position:sticky;top:0;border-bottom:0;background:none;box-shadow:none;
+    -webkit-backdrop-filter:none;backdrop-filter:none}
+  /* Neither the pane's hairline ring nor its bevel: there is no pane here to carry them. */
+  .studio-shell .topbar::after{content:none}
+  .studio-shell .topbar::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:0;box-shadow:none;
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+    -webkit-mask-image:linear-gradient(to bottom,#000 0 46%,#0000 100%);
+    mask-image:linear-gradient(to bottom,#000 0 46%,#0000 100%)}
+}

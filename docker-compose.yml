@@ -1,0 +1,16 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      AUTH_DATA_DIR: /app/data
+    restart: unless-stopped
+    volumes:
+      - music_data:/app/data
+volumes:
+  music_data:
+

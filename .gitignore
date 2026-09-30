@@ -1,0 +1,34 @@
+# dependencies
+node_modules
+.npm-cache
+.pnp
+.pnp.js
+
+# next.js build output
+.next
+out
+build
+
+# typescript
+*.tsbuildinfo
+
+# runtime data (accounts, uploaded assets) — never commit
+data/
+
+# env
+.env*
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# os / editor
+.DS_Store
+*.swp
+.idea
+.vscode
+
+# vercel
+.vercel
