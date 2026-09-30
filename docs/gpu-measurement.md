@@ -57,9 +57,80 @@ Four things about it, all of which shape how the numbers must be read:
    with its displacement chain removed. It is not a fixed cost: with the clock quiet, the bar stops
    being repainted and the rim goes with it.
 
-## The plan
+## What was done about it
 
-Ordered by measured value per unit of risk. **Nothing here is implemented yet.**
+**A — the drift is stepped** (`lib/ambientDrift.ts`, commit `d870a04`). The keyframes are gone from
+the stylesheet; one transform write a second carries the same path, travel and scale, and nothing at
+all happens under `prefers-reduced-motion`. **Idle: 99 % → 5-6 %** (four runs), which is the
+blank-page floor. Verified in the same session: the orbs take one step a second along the intended
+path, and the playing state follows at 22 %.
+
+**B — investigated, not yet changed.** The playback cost is the **seek row**: with the app truly
+playing (its own transport, `audio-playing` + `is-playing`, both animations, the clock ticking),
+hiding that one row drops the machine from **22 % to 4.0 %** — a within-state A/B, the most
+trustworthy comparison this instrument allows. Four writes a second inside `.glass-bar` repaint the
+row, and repainting anything inside a `backdrop-filter` pane re-runs that pane's backdrop. Two
+things follow, both measured:
+
+- it is **not** the transport's animations, the bar's rim, the sampler or the drift — each was
+  removed in turn with no change;
+- the obvious remedies **backfire inside a backdrop pane**: `contain: paint` on the row wedged the
+  renderer outright (the tab stopped answering and had to be reloaded), and `will-change: transform`
+  on it made the cost *worse* (22 % → 52 %). Do not put compositing hints on children of a pane.
+
+What is left, in order of what it costs the design: update the fill less often (a 1 Hz fill ≈ a
+quarter of the cost, with a visibly stepping hairline); draw the fill as a transformed element
+instead of a gradient driven by `--seek` (keeps 4 Hz, needs the seek row restructured); or take the
+row out of the pane. None of them is needed for the budget — 22 % is inside 30 % — so this is
+headroom, not a defect.
+
+## C — the surfaces nobody had measured
+
+All at the documented defaults, taken muted, each verified before and after:
+
+| state | median |
+| --- | --- |
+| desktop, idle | 5-6 % |
+| phone layout (390×844@2), idle | 10 % |
+| phone, now-playing view open with the sheet up | 10 % |
+| desktop, video overlay open | 9.5 % |
+| desktop, playing audio | 22 % |
+
+The now view and its sheet cost nothing beyond the phone layout's own idle, and the overlay costs
+little more than the desktop's. Two caveats, stated rather than buried: the overlay arm used the
+undecodable `.mp4` fixture, so real video decode and texture upload are **not** covered by that
+number; and the phone's 10 % sits inside the instrument's wobble around the desktop's 5-6 %, so it
+should be re-measured with interleaving before anyone acts on the difference.
+
+## D — how to keep it
+
+**The instrument, again, with its failure modes.** `ioreg -c IOAccelerator`'s "Device Utilization %"
+is device-wide, and this machine has **switchable graphics** (Intel iGPU + AMD RX 590): the same app
+state read **22 %** and **99 %** at different times, which is the device under the reading changing,
+not the app. So:
+
+1. Fix the viewport with the emulator, and pin the glass settings through `localStorage` — an
+   unpinned window changed a reading by 4× once.
+2. Verify the state you think you are measuring, from inside the page: `document.querySelector("audio").paused`
+   plus the app's own classes (`audio-playing`, `is-playing`) plus `document.getAnimations()`.
+   Driving the element directly (`audio.play()`) leaves the app's *visual* state behind and measures
+   something nobody ever sees — that mistake cost three arms here.
+3. A/B **within one state**, or interleave the arms; never compare across runs minutes apart.
+4. Read the **median**, and check `rafFramesPerSecond` is ~60 and `document.visibilityState` is
+   "visible" — an occluded window is not composited and reads as a miracle.
+
+**The two budgets**, as the user stated them: **idle ≤ 5 %**, **real-time ≤ 30 %**, against a
+blank-page floor of 4 %. Both hold after A (5-6 % idle, 22 % playing), with thin headroom on the
+playing side.
+
+**The rule that came out of it**, worth putting next to the glass's other rules: *nothing may move
+continuously behind a pane.* A `backdrop-filter` samples what is painted behind it, so an animation
+behind the glass costs a re-blur of the whole studio every frame, while the same movement in front
+of it — the pill's bob, the play disc's swell — costs nothing. If a backdrop must move, step it.
+
+## The plan that remains
+
+Ordered by measured value per unit of risk. **Nothing below is implemented.**
 
 ### A. The backdrop stops moving continuously — 99 % → ~5 % idle (the whole idle budget)
 
