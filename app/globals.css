@@ -763,7 +763,13 @@
     transition:translate .34s var(--ease-glass),visibility 0s linear .34s}
   .now-body.is-drawer-open .now-drawer{translate:0 0;visibility:visible;pointer-events:auto;transition-delay:0s,0s}
   .now-body.is-drawer-open .now-queue{opacity:1;visibility:visible;transform:none}
-  .now-queue{height:100%;border-radius:24px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 14px)}
+  /* The sheet covers the artwork, and a tint you can read the artwork through is not a sheet: the
+     tile's own edges show through it as two vertical seams, which is what "it looks like something
+     is covering the edges" was. Over the phone's stage the panel is a dark glass of its own rather
+     than a white wash — the same look, but what is behind it stays behind it. */
+  .now-queue{height:100%;border-radius:24px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+    background:rgba(16,18,26,.82);border-color:rgba(255,255,255,.14);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
   /* The artwork leaves the window as the lyrics come up — the whole way, off the left edge, so
      nothing of it is left lying over the sheet — and the same drag brings it back in. Half the
      window plus half its own width is exactly its centred place taken out of view; the extra 8px
@@ -785,7 +791,10 @@
 }
 /* The bob travels; it must not touch opacity, or the running animation would out-rank the rule
    above and the arrow would stay lit while the sheet it points at is already open. */
-@keyframes sheet-hint{from{translate:0 0}to{translate:0 -5px}}
+/* The bob travels — and it has to carry the handle's own centring with it: an animation on
+   `translate` replaces the whole value, so a keyframe that only named the Y would drop the
+   `-50%` the handle is centred by and leave the arrow sitting to one side. */
+@keyframes sheet-hint{from{translate:-50% 0}to{translate:-50% -5px}}
 
 /* ── The phone's top bar ─────────────────────────────────────────────────────
    Not the wide layout's capsule: a slab glued to a 390px window would only eat the page, and
