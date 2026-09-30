@@ -130,19 +130,8 @@ of it — the pill's bob, the play disc's swell — costs nothing. If a backdrop
 
 ## The plan that remains
 
-Ordered by measured value per unit of risk. **Nothing below is implemented.**
-
-### A. The backdrop stops moving continuously — 99 % → ~5 % idle (the whole idle budget)
-
-Pick one; the difference is the visual:
-
-| option | idle median | what is lost |
-| --- | --- | --- |
-| freeze the orbs (`animation: none`) | 5 % | the slow drift of the two colour clouds — the studio becomes still |
-| **step the drift** (one transform write per second, or one per two seconds) | **5 %** | almost nothing: at a 1-2 px step the movement is a slow creep rather than a glide. Measured at 5 % with 60 px steps, so the cost is per *change*, not per distance — smaller steps cost the same |
-| animate only while the user is interacting | 5 % at rest | idle is free, but scrolling then carries the drift's cost |
-
-Measured on the stepped variant: **5 % median, 8.6 % mean** — the drift survives and the budget is met.
+What is left, in order of measured value per unit of risk. **Nothing below is implemented.**
+(A — the stepped drift — is done; see *What was done about it* above.)
 
 ### B. The clock stops invalidating the panes — 27 % → under 10 % during playback (estimated)
 
