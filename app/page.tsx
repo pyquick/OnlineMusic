@@ -46,6 +46,7 @@ import { readEmbeddedTags } from "@/lib/embedded-tags";
 import { attachGlassEdge, MAX_EDGE_OFFSET, MAX_BAND_PX } from "@/lib/glassEdge";
 import { attachGlassWebgl, type GlassWebglHandle } from "@/lib/glassWebgl";
 import { setAutoShade, startInkSampler, touchScene } from "@/lib/inkSampler";
+import { startAmbientDrift } from "@/lib/ambientDrift";
 import dynamic from "next/dynamic";
 import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyphs";
 import type { Asset, IndexEntry } from "@/shared/types/media";
@@ -420,6 +421,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => startInkSampler(), []);
+  // The ambient drift is stepped, not animated: see lib/ambientDrift.ts for what the frames cost.
+  useEffect(() => startAmbientDrift(), []);
   // The five sliders, pushed live: the band re-draws from the raster it already has — and re-reads
   // the veil clarity just rewrote — so moving one never costs a rasterisation. The tint rides
   // along because the band carries it too, and a colour the flat middle has already changed to

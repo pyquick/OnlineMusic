@@ -223,10 +223,11 @@
    see .glass-rim-fallback) gets the shaded rim further down instead. */
 .ambient{position:fixed;inset:0;z-index:var(--z-backdrop);overflow:hidden;pointer-events:none}
 .ambient-orb{position:absolute;border-radius:50%;filter:blur(72px);opacity:.5}
-.ambient-orb.orb-a{width:440px;height:440px;left:-70px;bottom:-60px;background:radial-gradient(circle at 35% 35%,#ffb3b6,#e5484d 52%,transparent 72%);animation:orb-a 22s ease-in-out infinite alternate}
-.ambient-orb.orb-b{width:480px;height:480px;right:-90px;bottom:-80px;background:radial-gradient(circle at 60% 40%,#ffcadb,#ef8fb4 48%,transparent 72%);animation:orb-b 27s ease-in-out infinite alternate}
-@keyframes orb-a{from{translate:0 0;scale:1}to{translate:70px -60px;scale:1.12}}
-@keyframes orb-b{from{translate:0 0;scale:1.06}to{translate:-80px -50px;scale:1}}
+/* No keyframes here: the drift is stepped once a second from lib/ambientDrift.ts. Moving these
+   clouds at the frame rate re-blurs every pane in the studio (99 % GPU idle, measured); a step a
+   second costs nothing and reads the same on a blur this soft. */
+.ambient-orb.orb-a{width:440px;height:440px;left:-70px;bottom:-60px;background:radial-gradient(circle at 35% 35%,#ffb3b6,#e5484d 52%,transparent 72%)}
+.ambient-orb.orb-b{width:480px;height:480px;right:-90px;bottom:-80px;background:radial-gradient(circle at 60% 40%,#ffcadb,#ef8fb4 48%,transparent 72%)}
 /* No z-index here: a stacking context would trap every child below the panes,
    so the topbar (z-index 6) would drop out of the root stack. Static content
    still paints above the orbs by DOM order. */
