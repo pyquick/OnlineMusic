@@ -733,11 +733,19 @@
 @media(max-width:680px){.now-view{padding:16px 16px 22px}.now-art{width:min(34vh,300px)}.now-progress{position:static;left:auto;right:auto;bottom:auto}.now-transport .now-play{width:58px;height:58px}}
 
 /* ── The small screen's fullscreen player ────────────────────────────────────
-   One column, art above controls, and the lyrics as a sheet that rises from the foot of the
-   screen over the bar rather than as a second column that has to be found behind a button.
-   The sheet's own handle — the arrow at the foot of the stage — belongs to this layout alone;
-   the wide one opens the same panel from the corner switch. */
-.now-sheet-hint{display:none}
+   One column, art above controls, and the panel as a sheet that rises from the foot of the
+   screen over the bar rather than as a second column that has to be found behind a button. */
+/* The handle at the foot of the phone's stage: the sign of the pull, and a tap target for the
+   same thing. The wide layout has the corner switch and shows none of it. */
+.now-sheet-hint{position:absolute;left:50%;translate:-50% 0;bottom:4px;display:grid;place-items:center;
+  padding:6px 26px;background:none;border:0;color:rgba(255,255,255,.5);cursor:pointer;
+  animation:sheet-hint 2.6s ease-in-out infinite alternate;transition:opacity .3s ease,color .2s ease}
+.now-sheet-hint:hover{color:rgba(255,255,255,.9)}
+.now-body.is-drawer-open ~ .now-sheet-hint{opacity:0}
+/* The panel arriving in its new place after the layout flips between phone and desk. Translate
+   only — an opacity here would make the drawer a backdrop root and put the panel's frost out. */
+@keyframes sheet-handoff{from{translate:0 46px}to{translate:0 0}}
+.now-drawer.is-handoff{animation:sheet-handoff .44s var(--ease-glass) both}
 @media(max-width:680px){
   .now-view{padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px)}
   .now-body{display:flex;flex-direction:column;flex:1;min-height:0;margin-top:12px;overflow:hidden;gap:12px;transition:none}
@@ -748,13 +756,14 @@
      root and put out the frost on the queue panel inside it.
      The sheet is a card rather than a slab glued to the window: it keeps 15px of air on either
      side. The body it hangs in is already inset by the view's own 16px padding, so -1px is what
-     leaves 15 on screen; the foot stays flush, which is what a bottom sheet does. */
-  .now-drawer{position:absolute;left:-1px;right:-1px;bottom:-16px;z-index:3;height:min(74%,560px);padding-top:0;
+     leaves 15 on screen; the foot sits where that padding ends, so the card keeps all four of its
+     rounded corners off the window edge rather than running them off it. */
+  .now-drawer{position:absolute;left:-1px;right:-1px;bottom:0;z-index:3;height:min(74%,560px);padding-top:0;
     translate:0 102%;visibility:hidden;pointer-events:none;
     transition:translate .34s var(--ease-glass),visibility 0s linear .34s}
   .now-body.is-drawer-open .now-drawer{translate:0 0;visibility:visible;pointer-events:auto;transition-delay:0s,0s}
   .now-body.is-drawer-open .now-queue{opacity:1;visibility:visible;transform:none}
-  .now-queue{height:100%;border-radius:24px 24px 0 0;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 14px)}
+  .now-queue{height:100%;border-radius:24px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 14px)}
   /* The artwork leaves the window as the lyrics come up — the whole way, off the left edge, so
      nothing of it is left lying over the sheet — and the same drag brings it back in. Half the
      window plus half its own width is exactly its centred place taken out of view; the extra 8px
@@ -772,12 +781,7 @@
      exist — the wide layout has the corner switch for that — so it sits on the bottom edge, under
      everything, and goes as soon as the panel does. Nothing glass rides on it, so its opacity may
      animate. */
-  .now-sheet-hint{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 2px);
-    display:grid;place-items:center;color:rgba(255,255,255,.5);
-    animation:sheet-hint 2.6s ease-in-out infinite alternate;
-    transition:opacity .3s ease}
-  .now-body.is-drawer-open ~ .now-sheet-hint,
-  .now-body.is-drawer-open .now-sheet-hint{opacity:0}
+  .now-sheet-hint{bottom:calc(env(safe-area-inset-bottom,0px) + 2px)}
 }
 /* The bob travels; it must not touch opacity, or the running animation would out-rank the rule
    above and the arrow would stay lit while the sheet it points at is already open. */

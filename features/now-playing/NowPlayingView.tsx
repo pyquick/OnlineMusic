@@ -71,6 +71,9 @@ export default function NowPlayingView({
   const [axis, setAxis] = useState<"x" | "y" | null>(null);
 
   const lyricsRef = useRef<HTMLDivElement>(null);
+  /** True for the length of the settle after the layout flips between phone and desk. */
+  const [handoff, setHandoff] = useState(false);
+  const wasCompact = useRef(compact);
   /** The artwork's slot itself, whose distance from the top of the window sizes that space. */
   const artWrapRef = useRef<HTMLDivElement>(null);
   /** The song's title, whose top edge is where the player block begins. */
@@ -81,9 +84,30 @@ export default function NowPlayingView({
   // Escape, focus landing on a row — the artwork steps out or comes back with it.
   useEffect(() => { setReveal(drawer ? 1 : 0); }, [drawer]);
 
-  // Escape unwinds one layer at a time: the lyrics sheet first, the view itself after.
+  /**
+   * Crossing the breakpoint with the panel open: the sheet at the foot of a phone and the column
+   * at the right of a desk are two different layouts, so no single transform can carry one into
+   * the other — the position changes with the layout and only the *arrival* can be animated. What
+   * runs here is that arrival: the panel settles up into its new place, from below, which is the
+   * direction it came from. Translate only; an opacity on a glass ancestor would put its frost out.
+   */
+  useEffect(() => {
+    if (wasCompact.current === compact) return;
+    wasCompact.current = compact;
+    if (!drawer) return;
+    setHandoff(true);
+    const timer = window.setTimeout(() => setHandoff(false), 460);
+    return () => window.clearTimeout(timer);
+  }, [compact, drawer]);
+
+  // Escape unwinds one layer at a time: the sheet first, the view itself after. On the small
+  // screen the up and down arrows do what the pull does — that layout has no corner switch, so the
+  // keyboard is a way in there; on the wide one the switch is right there and the arrows are left
+  // to the page.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (compact && event.key === "ArrowUp") { event.preventDefault(); setPanel("queue"); setDrawer(true); return; }
+      if (compact && event.key === "ArrowDown" && drawer) { event.preventDefault(); setDrawer(false); return; }
       if (event.key !== "Escape") return;
       if (drawer && compact) { setDrawer(false); setReveal(0); return; }
       onClose();
@@ -273,7 +297,7 @@ export default function NowPlayingView({
             <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={onToggleLoop} disabled={!canStep} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={19} /></button>
           </div>
         </div>
-        <div className="now-drawer" onFocus={() => setDrawer(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDrawer(false); }}>
+        <div className={`now-drawer ${handoff ? "is-handoff" : ""}`} onFocus={() => setDrawer(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDrawer(false); }}>
           <aside className={`now-queue ${panel === "lyrics" ? "is-lyrics" : ""}`}>
             {panel === "queue" && <header><div className="now-queue-copy"><h3>Continue playing</h3><p>{track?.album ? `From ${track.album}` : "From all songs"}</p></div></header>}
             {panel === "lyrics"
@@ -289,9 +313,13 @@ export default function NowPlayingView({
           </div>
         </div>
       </div>
-      {/* The bottom edge says what the gesture is: pull up for what comes next. It is the phone's
-          only affordance for the panel, so it has to be visible before anything is touched. */}
-      {compact && <span className="now-sheet-hint" aria-hidden="true"><ChevronUp size={18} /></span>}
+      {/* The bottom edge of the small screen says what the gesture is — pull up for what comes
+          next — and answers a tap as well. The wide layout has the corner switch, so it has none
+          of this: an arrow on the full screen was in the way. */}
+      {compact && <button className="now-sheet-hint" onClick={() => { setPanel("queue"); setDrawer(true); }}
+        aria-label="Continue playing" title="Continue playing" aria-expanded={drawer && panel === "queue"}>
+        <ChevronUp size={18} />
+      </button>}
     </section>
   );
 }

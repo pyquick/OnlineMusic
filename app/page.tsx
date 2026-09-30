@@ -67,6 +67,9 @@ const AppearanceSettings = dynamic(() => import("@/features/appearance/Appearanc
 /** The precision editor is opened from the studio and covers the window; also loaded on demand. */
 const ParametersScreen = dynamic(() => import("@/features/parameters/ParametersScreen"), { ssr: false });
 
+/** The window-sized video player opens from a clip in the library; also loaded on demand. */
+const VideoOverlay = dynamic(() => import("@/features/video").then((module) => module.VideoOverlay), { ssr: false });
+
 /** The now-playing window is opened from the bar; loaded on demand like the other surfaces. */
 const NowPlayingView = dynamic(() => import("@/features/now-playing").then((module) => module.NowPlayingView), { ssr: false });
 
@@ -298,7 +301,6 @@ export default function Home() {
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
-  const [videoControlsVisible, setVideoControlsVisible] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
@@ -335,7 +337,6 @@ export default function Home() {
   const glassWebglRef = useRef<GlassWebglHandle | null>(null);
   /** The level the fullscreen speaker comes back to when it is unmuted; 72 is the dial's own default. */
   const lastGainRef = useRef(gain || 72);
-  const videoHideTimer = useRef<number | null>(null);
   const prefetchedRef = useRef<Set<string>>(new Set());
   const prefetchRef = useRef<HTMLMediaElement | null>(null);
   const prefetchTimer = useRef<number | null>(null);
@@ -1037,7 +1038,23 @@ export default function Home() {
         onPick={(item) => { void playAsset(item, queueNames); }}
       />}
 
-      {videoOverlay && <div className={`video-overlay ${videoControlsVisible ? "video-controls-visible" : ""}`} onMouseMove={(event) => { const nearBottom = window.innerHeight - event.clientY < 150; if (nearBottom) { setVideoControlsVisible(true); if (videoHideTimer.current) window.clearTimeout(videoHideTimer.current); videoHideTimer.current = window.setTimeout(() => setVideoControlsVisible(false), 1800); } else if (!event.currentTarget.querySelector(".video-player-dock:hover")) { setVideoControlsVisible(false); } }} onMouseLeave={() => { if (videoHideTimer.current) window.clearTimeout(videoHideTimer.current); setVideoControlsVisible(false); }}><video ref={videoRef} src={videoOverlay.url} autoPlay playsInline onPlay={() => setVideoPlaying(true)} onPause={() => setVideoPlaying(false)} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration)} onTimeUpdate={(event) => setVideoProgress(event.currentTarget.currentTime)} /><div className="video-shell-sidebar"><aside className="sidebar" data-glass-edge="">{/* Same rail styling as the main sidebar, but listing the media you can play. */}<div className="brand"><div className="brand-mark"><Sparkles size={17} /></div><span>onlineMusic</span></div><nav className="nav-group video-playlist"><p className="eyebrow">Songs &amp; videos</p>{playableAssets.map((item) => <button className={`nav-item ${videoOverlay.file.name === item.file.name ? "active" : ""}`} key={item.file.name} onClick={() => playFromVideoOverlay(item)} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}>{item.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="playlist-title">{item.title || item.file.name}</span></button>)}{playableAssets.length === 0 && <p className="playlist-empty">Nothing to play yet.</p>}</nav><div className="sidebar-bottom"><button className="profile profile-button" onClick={() => { setAuthError(""); setAuthOpen(true); }}><div className="avatar">{user?.name?.slice(0,2).toUpperCase() || "JL"}</div><div><strong>{user?.name || "Guest user"}</strong><small>{user ? user.email : "Sign in to sync"}</small></div></button></div></aside></div><div className={`video-dock-hit-zone ${videoControlsVisible ? "is-visible" : ""}`} onMouseEnter={() => setVideoControlsVisible(true)} onMouseLeave={() => window.setTimeout(() => setVideoControlsVisible(false), 250)}><div className={`video-player-dock ${videoControlsVisible ? "is-visible" : ""}`} data-glass-edge="3"><div className="now-playing"><span className="mini-cover"><FileVideo size={16} /></span><div className="now-playing-copy"><strong><span>{videoOverlay.title || videoOverlay.file.name}</span></strong><small>video · local preview</small></div></div><div className="player-controls"><button className="icon-button" onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }}><SkipBack size={16} /></button><button className="player-button" onClick={() => { const video = videoRef.current; if (!video) return; if (video.paused) void video.play(); else video.pause(); }}>{videoPlaying ? <PauseGlyph size={17} /> : <PlayGlyph size={17} />}</button><button className="icon-button" onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.min(videoDuration, videoRef.current.currentTime + 10); }}><SkipForward size={16} /></button><div className="progress-wrap"><span>{formatTime(videoProgress)}</span><input type="range" min="0" max={videoDuration || 1} step="0.1" value={videoProgress} style={{ "--seek": `${videoDuration ? (videoProgress / videoDuration) * 100 : 0}%` } as CSSProperties} onChange={(event) => { const value = Number(event.target.value); if (videoRef.current) videoRef.current.currentTime = value; setVideoProgress(value); }} /><span>{formatTime(videoDuration)}</span></div></div><div className="player-actions"><Volume2 size={17} /><input type="range" min="0" max="100" defaultValue="100" onChange={(event) => { if (videoRef.current) videoRef.current.volume = Number(event.target.value) / 100; }} /><button className="queue-button" onClick={() => { videoRef.current?.pause(); setVideoPlaying(false); setVideoOverlay(null); }}><X size={16} /> Close</button></div></div></div></div>}
+      {videoOverlay && <VideoOverlay
+        item={videoOverlay}
+        media={videoRef}
+        playing={videoPlaying}
+        progress={videoProgress}
+        duration={videoDuration}
+        playable={playableAssets}
+        user={user}
+        onProgress={setVideoProgress}
+        onDuration={setVideoDuration}
+        onPlayingChange={setVideoPlaying}
+        onSelect={playFromVideoOverlay}
+        onHoverItem={schedulePrefetch}
+        onLeaveItem={cancelPrefetch}
+        onRequestAuth={() => { setAuthError(""); setAuthOpen(true); }}
+        onClose={() => { videoRef.current?.pause(); setVideoPlaying(false); setVideoOverlay(null); }}
+      />}
 
       <audio ref={audioRef} preload="metadata" onError={(event) => { const element = event.currentTarget; if (asset?.kind !== "audio" || !element.getAttribute("src")) return; setMediaError("This browser cannot decode this file"); }} />
       <div ref={prefetchHostRef} className="prefetch-host" aria-hidden="true" />
