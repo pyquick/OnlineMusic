@@ -1,0 +1,30 @@
+# Everything here runs with what the repository already has: Node's own test runner, the
+# TypeScript that ships with the project, and three scripts that read the source and the build.
+# No test framework, no bundler analysis tool, no dependency to keep current — the checks that
+# cannot be written this way (the computed-style diffs and the pixel probes the glass needs) are
+# manual by nature, and docs/perf-baseline.md says how to run them.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Types
+        run: npm run typecheck
+      - name: Architecture (layering, cross-feature imports, cycles)
+        run: npm run check:architecture
+      - name: Unit tests
+        run: npm test
+      - name: Build and budget
+        run: npm run check:budget

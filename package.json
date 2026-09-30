@@ -6,7 +6,12 @@
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import ./tests/register.mjs --test tests/*.test.mjs",
+    "check:architecture": "node scripts/architecture.mjs",
+    "check:budget": "next build && node scripts/budget.mjs",
+    "check": "npm run typecheck && npm run check:architecture && npm test"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
