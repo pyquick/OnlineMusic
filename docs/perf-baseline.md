@@ -85,6 +85,9 @@ biggest server-side win available, and it is measurable as request latency on `/
 | --- | --- | --- |
 | P0 (commit `e4d388a`) | deleted confirmed dead code (TS + CSS) | build + container check; First Load JS unchanged at 123 kB |
 | P1 | design tokens: two font stacks, three easings, four shared type sizes, the document's z-layers; literals replaced 1:1 | **computed-style diff through the Chrome DevTools MCP: 195 elements × 57 properties on the studio view and the settings view, before vs after = 0 differing values**; console clean; live check that `--glass-blur` drives `backdrop-filter` (`blur(12.4px) saturate(1.7) url(#glass-edge-0)`) after four `ArrowRight` presses on the Blur slider |
+| P2 | the five material levels named on the shell; four of the five pane selector lists replaced by `[data-glass-edge]`; pane radii named | 1,479 element-lines (five views at a fixed viewport + the compact layout with the pill's bubble raised) = 0 differing values; Clarity driven 60 → 62 with real key presses moved the bar's alpha 0.616 → 0.608 through the level token |
+| P3.1/P3.2 | the appearance feature and the parameter editor extracted; `RangeControl`, `TransportGlyphs`, `Asset`/`IndexEntry`, `formatTime` moved to design-system/shared; both surfaces loaded with `next/dynamic` | 1,301 + 1,209 element-lines = 0 differing values; both lazy chunks confirmed absent from the initial-load list; First Load JS 123 kB unchanged |
+| P4 | the playback clock left the page's state for `features/player` (`useMediaClock`, `SeekBar`, `WaveformTrack`); the listings memoised | **during 8 s of playback, React's scheduler time fell from 87.1 ms to 38.1 ms (−56 %)**, and the page-state writer (`updateTime`, 27 calls) disappeared entirely; the clock now writes 64 × locally (`syncTime`). Studio + editor, 604 element-lines = 0 differing values; transport text, wave times and the wave's `aria-valuenow` all identical |
 
 ## How to re-measure
 

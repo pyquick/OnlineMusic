@@ -1,21 +1,24 @@
 "use client";
 
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { RefObject } from "react";
 import { Activity, Pause, Play, SlidersHorizontal, X } from "lucide-react";
 import { RangeControl } from "@/design-system/components/RangeControl";
+import { WaveformTrack } from "@/features/player";
 
 /**
  * The precision editor: the whole window, one waveform to seek on, and the numbers that shape
  * the sound. It owns nothing — the values are the studio's, the audio element is the bar's, and
  * every dial writes straight back through `onChange` — which is what lets it be loaded on demand
  * and unmounted without the playback noticing.
+ *
+ * It reads the position from the element itself rather than taking it as a prop: a prop would
+ * mean the studio re-rendering four times a second to hand down a number this view can watch
+ * on its own.
  */
 export type ParametersScreenProps = {
   title: string;
+  media: RefObject<HTMLMediaElement | null>;
   waveform: number[];
-  duration: number;
-  currentTime: number;
-  previewProgress: number;
   playing: boolean;
   saved: boolean;
   rate: number; volume: number; gain: number; eq: number; fadeIn: number; fadeOut: number;
@@ -27,24 +30,21 @@ export type ParametersScreenProps = {
   onFadeOut: (next: number) => void;
   onTogglePlayback: () => void;
   onSave: () => void;
-  onSeekPointer: (event: ReactMouseEvent<HTMLElement>) => void;
   onClose: () => void;
-  formatTime: (seconds: number) => string;
 };
 
 export default function ParametersScreen({
-  title, waveform, duration, currentTime, previewProgress, playing, saved,
+  title, media, waveform, playing, saved,
   rate, volume, gain, eq, fadeIn, fadeOut,
   onRate, onVolume, onGain, onEq, onFadeIn, onFadeOut,
-  onTogglePlayback, onSave, onSeekPointer, onClose, formatTime,
+  onTogglePlayback, onSave, onClose,
 }: ParametersScreenProps) {
   return (
     <section className="parameter-screen">
       <div className="parameter-header"><h1>{title}</h1><button className="ghost-button" onClick={onClose}><X size={16} /> Close editor</button></div>
       <div className="parameter-wave-card">
         <div className="wave-toolbar"><span><Activity size={15} /> Editable waveform</span><span className="wave-hint">Click anywhere to seek</span></div>
-        <div className="wave-track interactive-wave" onClick={onSeekPointer} role="slider" aria-label="Seek waveform in parameter editor" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={currentTime} tabIndex={0}><div className="wave-bars">{waveform.map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}</div><div className="playhead" style={{ left: `${previewProgress}%` }} /></div>
-        <div className="wave-times"><span>{formatTime(currentTime)}</span><span>{formatTime(duration)}</span></div>
+        <WaveformTrack media={media} waveform={waveform} ariaLabel="Seek waveform in parameter editor" />
       </div>
       <div className="parameter-grid">
         <div className="parameter-card">
