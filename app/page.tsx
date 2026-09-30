@@ -47,6 +47,8 @@ import { attachGlassEdge, MAX_EDGE_OFFSET, MAX_BAND_PX } from "@/lib/glassEdge";
 import { attachGlassWebgl, type GlassWebglHandle } from "@/lib/glassWebgl";
 import { setAutoShade, startInkSampler, touchScene } from "@/lib/inkSampler";
 import dynamic from "next/dynamic";
+import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyphs";
+import type { Asset, IndexEntry } from "@/shared/types/media";
 import { BAND_PERCENT_TO_PX, DEFAULT_APPEARANCE, DEFAULT_GLASS_BLUR, DEFAULT_GLASS_CLARITY, DEFAULT_GLASS_EDGE, DEFAULT_GLASS_RADIUS, DEFAULT_GLASS_REFRACTION, GRADIENT_PRESETS, MAX_GLASS_BLUR, SOLID_PRESETS, tintChannels, type Appearance } from "@/features/appearance";
 import { RangeControl } from "@/design-system/components/RangeControl";
 import BottomPill, { type PillItem } from "./bottom-pill";
@@ -58,6 +60,9 @@ import BottomPill, { type PillItem } from "./bottom-pill";
  */
 const AppearanceSettings = dynamic(() => import("@/features/appearance/AppearanceSettings"), { ssr: false });
 
+/** The precision editor is opened from the studio and covers the window; also loaded on demand. */
+const ParametersScreen = dynamic(() => import("@/features/parameters/ParametersScreen"), { ssr: false });
+
 const acceptedFormats =["MP3", "MP4", "M4A", "WAV", "FLAC", "OGG", "OGA", "OPUS", "AAC", "WMA", "WEBM", "MOV", "MKV", "AVI", "AIFF", "PNG", "JPG", "JPEG", "WEBP", "JSON"];
 const acceptedExtensions = acceptedFormats.map((format) => `.${format.toLowerCase()}`).join(",");
 const audioExtensions = new Set(["mp3", "m4a", "wav", "flac", "ogg", "oga", "opus", "aac", "wma", "aiff"]);
@@ -67,24 +72,6 @@ const maxFileSize = 250 * 1024 * 1024;
 const PREFETCH_SECONDS = 5;
 /** How many entries at the top of a collection view are warmed when it opens. */
 const LIST_PREFETCH_COUNT = 4;
-type Asset = {
-  file: File;
-  url: string;
-  kind: "audio" | "video" | "image" | "project";
-  title: string;
-  artist: string;
-  album: string;
-  genre: string;
-  metadata: Record<string, unknown>;
-  apiId?: string;
-};
-
-/** One line of the streamed asset index: everything a list row needs, without file bytes or artwork. */
-type IndexEntry = {
-  id: string; name: string; mediaKind: Asset["kind"]; format?: string; title?: string; artist?: string; album?: string;
-  genre?: string; trackNo?: number; durationMs?: number; lyrics?: string; sizeBytes?: number; mimeType?: string;
-  fileUrl?: string; coverUrl?: string; hasCover?: boolean;
-};
 
 function indexEntryToAsset(entry: IndexEntry): Asset {
   const mimeType = entry.mimeType || "application/octet-stream";
@@ -120,28 +107,6 @@ function albumCover(items: Asset[]) {
 /** The songs of a listing, in the order they are shown: the order shuffle and list repeat walk. */
 function audioNames(items: Asset[]) {
   return items.filter((item) => item.kind === "audio").map((item) => item.file.name);
-}
-
-/**
- * The transport glyphs are drawn here rather than taken from the icon set: a filled triangle and a
- * pair of bars with soft corners, the way a player's own controls are cut. The set's play is a
- * sharp-cornered polygon and its pause bars are square, which is exactly what reads as "spiky".
- */
-function PlayGlyph({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M10.3 6.4 16.7 10.1Q20 12 16.7 13.9L10.3 17.6Q7 19.5 7 15.69L7 8.31Q7 4.5 10.3 6.4Z" />
-    </svg>
-  );
-}
-
-function PauseGlyph({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <rect x="6.9" y="5" width="4.1" height="14" rx="2.05" />
-      <rect x="13" y="5" width="4.1" height="14" rx="2.05" />
-    </svg>
-  );
 }
 
 /**
@@ -1218,7 +1183,32 @@ export default function Home() {
           </>}
         </div>
       </section>
-      {parametersOpen && asset && <section className="parameter-screen"><div className="parameter-header"><h1>{asset.title || asset.file.name}</h1><button className="ghost-button" onClick={() => setParametersOpen(false)}><X size={16} /> Close editor</button></div><div className="parameter-wave-card"><div className="wave-toolbar"><span><Activity size={15} /> Editable waveform</span><span className="wave-hint">Click anywhere to seek</span></div><div className="wave-track interactive-wave" onClick={seekFromPointer} role="slider" aria-label="Seek waveform in parameter editor" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={currentTime} tabIndex={0}><div className="wave-bars">{waveform.map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}</div><div className="playhead" style={{ left: `${previewProgress}%` }} /></div><div className="wave-times"><span>{formatTime(currentTime)}</span><span>{formatTime(duration)}</span></div></div><div className="parameter-grid"><div className="parameter-card"><div className="panel-title"><Activity size={17} /><h3>Playback</h3></div><RangeControl label="Playback rate" value={rate} min={25} max={200} display={`${(rate / 100).toFixed(2)}x`} onChange={setRate} /><RangeControl label="Preview volume" value={volume} min={0} max={100} display={`${volume}%`} onChange={(value) => { setVolume(value); if (audioRef.current) audioRef.current.volume = value / 100; }} /><button className="primary-button" onClick={togglePlayback}>{playing ? <Pause size={15} /> : <Play size={15} />} {playing ? "Pause preview" : "Play preview"}</button></div><div className="parameter-card"><div className="panel-title"><SlidersHorizontal size={17} /><h3>Dynamics & tone</h3></div><RangeControl label="Gain" value={gain} min={0} max={150} display={`${gain}%`} onChange={setGain} /><RangeControl label="Tone / EQ" value={eq} min={-100} max={100} display={`${eq > 0 ? "+" : ""}${eq}`} onChange={setEq} /><RangeControl label="Fade in" value={fadeIn} min={0} max={30} display={`${fadeIn}s`} onChange={setFadeIn} /><RangeControl label="Fade out" value={fadeOut} min={0} max={30} display={`${fadeOut}s`} onChange={setFadeOut} /><button className="save-button" onClick={saveMetadata}>{saved ? "Parameters saved" : "Save parameters"}</button></div></div></section>}
+      {parametersOpen && asset && <ParametersScreen
+        title={asset.title || asset.file.name}
+        waveform={waveform}
+        duration={duration}
+        currentTime={currentTime}
+        previewProgress={previewProgress}
+        playing={playing}
+        saved={saved}
+        rate={rate}
+        volume={volume}
+        gain={gain}
+        eq={eq}
+        fadeIn={fadeIn}
+        fadeOut={fadeOut}
+        onRate={setRate}
+        onVolume={(value) => { setVolume(value); if (audioRef.current) audioRef.current.volume = value / 100; }}
+        onGain={setGain}
+        onEq={setEq}
+        onFadeIn={setFadeIn}
+        onFadeOut={setFadeOut}
+        onTogglePlayback={togglePlayback}
+        onSave={saveMetadata}
+        onSeekPointer={seekFromPointer}
+        onClose={() => setParametersOpen(false)}
+        formatTime={formatTime}
+      />}
 
       {view === "projects" && metadataPanelOpen && asset && <><aside className="metadata-float" data-glass-edge=""><div className="metadata-float-header"><div><p className="eyebrow">Project metadata</p><h2>{asset.title || asset.file.name}</h2></div><button className="icon-button" onClick={() => setMetadataPanelOpen(false)}><X size={17} /></button></div>{(["title", "artist", "album", "genre"] as const).map((field) => <label key={field}>{field}<input value={asset[field]} placeholder={`Add ${field}`} onChange={(event) => updateMetadata(field, event.target.value)} /></label>)}<button className="cover-button" onClick={chooseCover}><Upload size={14} /> {coverSrc(asset) ? "Change cover image" : "Add cover image"}</button></aside><input ref={coverInputRef} type="file" accept="image/*" onChange={onCoverInput} hidden /></>}
 
