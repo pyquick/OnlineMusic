@@ -155,6 +155,7 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
     drag.current = null;
     if (!state) return;
     capture(state.pointer, false);
+    releaseFocus();
     if (!state.raised) return;
     // Whatever the pointer was over when it came up must not also receive the click that follows:
     // the drag has already chosen an item.
@@ -166,8 +167,23 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
     onBubbleMove?.();
   }
 
+  /**
+   * A tile that has just been pressed has no reason to keep focus: the browser focuses a button on
+   * pointerdown, and hands it the focus ring a moment later — the blue box the user saw around
+   * Projects after a tap or a drag. The ring belongs to the keyboard, and a keyboard never comes
+   * through a pointer handler, so clearing it here cannot take it away from anyone who needs it.
+   * (Same move the space-bar transport makes on the play button.)
+   */
+  function releaseFocus() {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && pillRef.current?.contains(active)) active.blur();
+  }
+
   function onPointerDown(event: ReactPointerEvent<HTMLButtonElement>, index: number) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    // A plain tap never reaches end() (nothing was raised), and it is the case the ring shows in
+    // most often: clear the focus the browser is about to hand the tile.
+    releaseFocus();
     drag.current = { pointer: event.pointerId, startX: event.clientX, index, raised: false, grab: 0, width: 0, centres: measure() };
     window.clearTimeout(holdTimer.current);
     holdTimer.current = window.setTimeout(() => raise(index), HOLD_MS);

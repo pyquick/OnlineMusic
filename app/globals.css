@@ -529,6 +529,10 @@
    wears the mix the pane carries for exactly that case: the glyphs and the words under them stay
    one colour however dark or light the glass under the pill goes. */
 .pill-item{position:relative;z-index:1;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 2px;border-radius:999px;background:none;--ink-base:#000;--ink-top:#fff;color:color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base));font-size:10.5px;transition:color .2s}
+/* The keyboard's ring, in the studio's own accent rather than the browser's default blue — the
+   same ring the bar's cover and the waveform wear. A pointer never leaves one behind: the pill
+   clears the focus a press hands its tile. */
+.pill-item:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .pill-item.is-current{--ink-base:#d6404a;--ink-top:#ffb3b6}
 .pill-icon{display:grid;place-items:center;height:20px}
 .pill-label{line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
