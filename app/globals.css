@@ -137,8 +137,12 @@
 /* The bar across the top is the rail's twin, not a strip glued to the window: the same 18px of
    air on every side the rail keeps, the same corner, border and shadow, so the two read as one
    pair of glass slabs with the page floating between them. Its own bottom hairline goes — the
-   capsule carries a border all the way round instead. */
-@media(min-width:681px){.topbar{margin:18px 18px 0 0;border:1px solid var(--line);border-radius:calc(var(--radius-pane-nav) * var(--glass-radius,1));box-shadow:0 18px 45px rgba(52,58,101,.12),0 2px 5px rgba(52,58,101,.06),var(--glass-bevel);overflow:hidden}}
+   capsule carries a border all the way round instead.
+   Like the rail it floats: `sticky` holds it at its 18px while the page runs underneath, so what
+   passes below arrives blurred through its glass instead of sliding out of view with it. And it
+   is a narrow bar centred on the content column — the same shape of bar as the one at the foot —
+   rather than a lid spanning everything the column has. */
+@media(min-width:681px){.topbar{position:sticky;top:18px;width:min(720px,calc(100% - 36px));margin:18px auto 0;border:1px solid var(--line);border-radius:calc(var(--radius-pane-nav) * var(--glass-radius,1));box-shadow:0 18px 45px rgba(52,58,101,.12),0 2px 5px rgba(52,58,101,.06),var(--glass-bevel);overflow:hidden}}
 .content-area{margin-left:286px}.nav-item{border-radius:14px}.sidebar-bottom{padding-bottom:2px}@media(max-width:680px){.sidebar{left:10px;top:10px;bottom:10px}.content-area{margin-left:0}}
 /* Guest/account tile: keep the button compact and aligned inside the floating rail. */
 .profile-button{display:flex;align-items:center;width:100%;min-width:0;margin:16px 0 0;padding:14px 11px;border:0;border-radius:14px;background:transparent;text-align:left;overflow:hidden}.profile-button .avatar{flex:none}.profile-button>div:nth-child(2){min-width:0}.profile-button strong,.profile-button small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.profile-button:hover{border:0;background:color-mix(in srgb,var(--ink) 8%,transparent)}.now-playing-copy{min-width:0;overflow:hidden}.now-playing-copy strong{display:block;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.now-playing-copy small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.now-playing-copy .is-long-title{overflow:hidden;text-overflow:clip}.now-playing-copy .is-long-title span{display:inline-block;white-space:nowrap}@keyframes title-marquee{from{transform:translateX(0)}to{transform:translateX(min(0px,calc(250px - 100%)))}}@media(max-width:900px){.now-playing-copy strong{max-width:180px}}@media(max-width:680px){.now-playing-copy strong{max-width:130px}.profile-button{margin-top:16px}}
