@@ -73,7 +73,7 @@ biggest server-side win available, and it is measurable as request latency on `/
 | Metric | Budget | measured |
 | --- | --- | --- |
 | First Load JS on `/` | ≤ 135 kB gz (see `scripts/budget.mjs`) | 122.2 kB |
-| CSS (gz, one file) | ≤ 15 kB | 13.5 kB |
+| CSS (gz, all shipped files) | ≤ 16 kB | 13.5 kB initial + 1.9 kB lyrics feature chunk (2026-10-01) |
 | Largest chunk (gz) | ≤ 58 kB | 53.7 kB |
 | Interaction (scroll / drag) p95 | ≤ 20 ms | 17.6 ms |
 | Long tasks | 0 over 50 ms during scroll, playback, or a slider drag | 0 |

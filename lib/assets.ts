@@ -12,7 +12,13 @@ export type MediaKind = (typeof MEDIA_KINDS)[number];
  */
 export const ACCEPTED_FORMATS: Record<MediaKind, readonly string[]> = { audio:["wav","mp3","flac","aiff","m4a","ogg","oga","opus","aac","wma"], video:["mp4","mov","webm","mkv","avi"], image:["png","jpg","jpeg","webp"], project:["json"] };
 export const MAX_ASSETS=10000, MAX_NAME_LENGTH=200, MAX_DESCRIPTION_LENGTH=2000, MAX_TAGS=50, MAX_TAG_LENGTH=50, MAX_LYRICS_LENGTH=200000;
-export interface AssetMetadata { title?:string; artist?:string; album?:string; genre?:string; description?:string; tags?:string[]; durationMs?:number; sizeBytes?:number; mimeType?:string; lyrics?:string; [key:string]:unknown }
+/**
+ * `lyrics` is the text the file came with (plain or LRC); `lyricsDoc` is the structured document
+ * the editor saves as a JSON string. They are deliberately separate: the document is the source
+ * of truth once it exists, the text stays as the import-time fallback, and only the dedicated
+ * `/lyrics` route writes the document — metadata PATCHes cannot reach it.
+ */
+export interface AssetMetadata { title?:string; artist?:string; album?:string; genre?:string; description?:string; tags?:string[]; durationMs?:number; sizeBytes?:number; mimeType?:string; lyrics?:string; lyricsDoc?:string; [key:string]:unknown }
 export interface Asset { id:string; ownerEmail:string; name:string; mediaKind:MediaKind; format:string; status:AssetStatus; metadata:AssetMetadata; filePath:string; hash?:string; createdAt:string; updatedAt:string }
 export interface CreateAssetInput { name:string; ownerEmail?:string; mediaKind?:MediaKind; format:string; status?:AssetStatus; metadata?:AssetMetadata; filePath?:string; hash?:string }
 export type UpdateAssetInput = Partial<Omit<CreateAssetInput,"name"|"ownerEmail"|"filePath">> & {name?:string};

@@ -16,7 +16,11 @@ import path from "node:path";
 const NEXT = path.join(process.cwd(), ".next");
 const LIMITS = {
   initialJsGz: 135_000,   // measured 122.2 kB gz after P3.3
-  cssGz: 15_000,          // measured 13.5 kB gz after the now-playing rounds
+  // Measured 2026-10-01: 13.5 kB gz for the studio's own stylesheet (unchanged from the
+  // now-playing baseline) plus ~1.9 kB gz for the lyrics feature's own file, which ships with
+  // the now-playing/editor chunks and is only fetched when one of them is. The limit guards the
+  // total, so it carries that feature's cost explicitly.
+  cssGz: 16_000,
   largestChunkGz: 58_000, // the shared vendor chunk, measured 53.7 kB gz
 };
 

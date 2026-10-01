@@ -24,7 +24,7 @@
   --font-mono:ui-monospace,SFMono-Regular,Menlo,monospace;
   --text-xs:10px;--text-sm:11px;--text-md:12px;--text-lg:13px;
   --ease-glass:cubic-bezier(.22,.9,.25,1);--ease-rise:cubic-bezier(.16,1,.3,1);--ease-fall:cubic-bezier(.5,0,.9,.4);
-  --z-backdrop:0;--z-bar:5;--z-topbar:6;--z-float:8;--z-panel:9;--z-nav:10;--z-params:15;--z-overlay:50;--z-now:65;--z-modal:70}
+  --z-backdrop:0;--z-bar:5;--z-topbar:6;--z-float:8;--z-panel:9;--z-nav:10;--z-params:15;--z-overlay:50;--z-now:65;--z-lyrics:68;--z-modal:70}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}body{font-family:var(--font-sans)}button,input{border:0;font:inherit;color:inherit}button{cursor:pointer}/* The page's backdrop lives on its own fixed element rather than on the shell, so it holds still
    while the page scrolls over it, and it is a real element rather than a ::before because the
    WebGL path walks the element tree into its raster — a backdrop painted any other way would be
@@ -709,18 +709,20 @@
 .now-switch button.is-on{background:#fff;color:#12141d}
 .now-queue ol,.now-lyrics{flex:1;min-height:0;margin:14px 0 0;padding:0 8px 0 0;overflow-y:auto}
 .now-queue ol{list-style:none;display:flex;flex-direction:column;gap:3px}
-.now-lyrics{padding-right:10px;color:rgba(255,255,255,.8);font-size:14px;line-height:1.85;
+/* The words are a window now, not a page: the renderer inside scrolls the live line to the
+   middle of this box, and the sheet keeps only its shape and its edge fade. */
+.now-lyrics{padding-right:10px;overflow:hidden;
   -webkit-mask-image:linear-gradient(to bottom,#0000 0,#000 18px,#000 calc(100% - 20px),#0000 100%);
   mask-image:linear-gradient(to bottom,#0000 0,#000 18px,#000 calc(100% - 20px),#0000 100%)}
-/* The words carry the focus, so the panel behind them is not a sheet of glass: no veil, no rim,
+/* The words carry the reading, so the panel behind them is not a sheet of glass: no veil, no rim,
    no blur of what is behind it — the stage's own backdrop comes through untouched and only the
-   lyrics soften, line by line, with the distance from the middle of the sheet (--lyric-focus is
-   1 there and 0 at the edge; page.tsx repaints it as the sheet scrolls). */
+   lines themselves carry the hierarchy, by brightness (see the lyrics renderer below). */
 .now-queue.is-lyrics{background:none;border-color:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
-.now-lyrics p{--lyric-focus:1;margin:0 0 11px;opacity:calc(.42 + .58 * var(--lyric-focus));filter:blur(calc((1 - var(--lyric-focus)) * (1 - var(--lyric-focus)) * 3.4px))}
-/* Nothing to show: the note about it belongs in the middle of the sheet, not pinned to its top. */
+/* Nothing to show: the note about it belongs in the middle of the window, not pinned to its top. */
 .now-lyrics:has(.now-empty){display:grid;place-content:center;text-align:center}
-.now-lyrics .now-empty{--lyric-focus:1}
+.now-lyrics .now-empty{padding:0}
+/* Under the title, the two lines the reference puts there: who sings it, and which record. */
+.now-subtitle{margin:7px 0 0;color:rgba(255,255,255,.6);font:500 15px var(--font-sans);letter-spacing:-.01em}
 .now-row{display:flex;align-items:center;gap:11px;width:100%;padding:8px 10px;border-radius:12px;background:none;color:rgba(255,255,255,.82);text-align:left;transition:background .18s ease}
 .now-row:hover{background:rgba(255,255,255,.1)}
 .now-row.is-current{background:rgba(255,255,255,.17)}
@@ -739,14 +741,11 @@
 
 /* The phone has no sheet for the words: they stand in the same rectangle the cover is centred in
    — the window above the player block, which the view measures into --now-upper-top and
-   --now-upper-bottom — three big lines of them, with the cover gone from under them. It is the
-   same element either way: the focus and the way a line softens with its distance from the middle
-   still apply, only its box changes. */
-.now-words{position:absolute;left:0;right:0;top:calc(-1 * var(--now-upper-top,0px));bottom:calc(-1 * var(--now-upper-bottom,0px));display:none;height:fit-content;max-height:calc(1.5em * 3);margin:auto 0;padding:0 4px;font-size:clamp(20px,6.6vw,28px);line-height:1.5;
-  /* Three lines have no ends to fade, so the softening here is the lines' own distance from the
-     middle of the block, and nothing else. */
+   --now-upper-bottom — three blocks of them, with the cover gone from under them. The renderer's
+   words-variant sizes the window from the measured block, so the live line is always the middle
+   one; three lines have no ends to fade, so there is no mask here. */
+.now-words{position:absolute;left:0;right:0;top:calc(-1 * var(--now-upper-top,0px));bottom:calc(-1 * var(--now-upper-bottom,0px));display:none;height:fit-content;margin:auto 0;padding:0 4px;
   -webkit-mask-image:none;mask-image:none}
-.now-words p{margin:0}
 
 /* ── The small screen's fullscreen player ────────────────────────────────────
    One column, art above controls, the words in the artwork's slot, and the songs that come next
@@ -822,6 +821,12 @@
    `translate` replaces the whole value, so a keyframe that only named the Y would drop the
    `-50%` the handle is centred by and leave the arrow sitting to one side. */
 @keyframes sheet-hint{from{translate:-50% 0}to{translate:-50% -5px}}
+
+/* The lyrics renderer and the editor ship their styles with their own chunks
+   (`features/lyrics/lyrics.css`), so the studio's initial stylesheet stays lean. The one rule
+   that belongs here is the now view's layout: the lyrics are the panel worth more room —
+   the words read at 24px, so on a wide window the open column takes a wider share of the body. */
+@media(min-width:901px){.now-body.is-drawer-open.is-lyrics-panel{grid-template-columns:minmax(0,1fr) minmax(340px,min(32vw,560px))}}
 
 /* ── The phone's top bar ─────────────────────────────────────────────────────
    Not the wide layout's capsule: a slab glued to a 390px window would only eat the page, and

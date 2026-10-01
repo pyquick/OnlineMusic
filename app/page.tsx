@@ -24,6 +24,7 @@ import {
   MoreHorizontal,
   Music2,
   Pause,
+  Pencil,
   Play,
   Plus,
   Repeat,
@@ -53,6 +54,8 @@ import type { Asset, IndexEntry } from "@/shared/types/media";
 import { BAND_PERCENT_TO_PX, DEFAULT_APPEARANCE, DEFAULT_GLASS_BLUR, DEFAULT_GLASS_CLARITY, DEFAULT_GLASS_EDGE, DEFAULT_GLASS_RADIUS, DEFAULT_GLASS_REFRACTION, GRADIENT_PRESETS, MAX_GLASS_BLUR, SOLID_PRESETS, tintChannels, type Appearance } from "@/features/appearance";
 import { RangeControl } from "@/design-system/components/RangeControl";
 import { coverSrc } from "@/shared/utilities/media";
+import { emptyLyricsDoc, parseLyrics, type LyricsDoc } from "@/shared/lyrics";
+import { fetchLyricsDoc } from "@/features/lyrics";
 import { SeekBar, WaveformTrack } from "@/features/player";
 import { formatTime } from "@/shared/utilities/time";
 import { ApiError, api, apiStream } from "@/infrastructure/api/client";
@@ -73,6 +76,9 @@ const VideoOverlay = dynamic(() => import("@/features/video").then((module) => m
 
 /** The now-playing window is opened from the bar; loaded on demand like the other surfaces. */
 const NowPlayingView = dynamic(() => import("@/features/now-playing").then((module) => module.NowPlayingView), { ssr: false });
+
+/** The lyrics workspace is its own full-window surface, opened from the words; loaded on demand. */
+const LyricsEditor = dynamic(() => import("@/features/lyrics/LyricsEditor"), { ssr: false });
 
 const acceptedFormats =["MP3", "MP4", "M4A", "WAV", "FLAC", "OGG", "OGA", "OPUS", "AAC", "WMA", "WEBM", "MOV", "MKV", "AVI", "AIFF", "PNG", "JPG", "JPEG", "WEBP", "JSON"];
 const acceptedExtensions = acceptedFormats.map((format) => `.${format.toLowerCase()}`).join(",");
@@ -374,6 +380,12 @@ export default function Home() {
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [lyricsOpen, setLyricsOpen] = useState(false);
+  /** The selected song's lyrics document: fetched once per asset, or parsed from its text. */
+  const [lyricsDoc, setLyricsDoc] = useState<LyricsDoc | null>(null);
+  /** Remembers what each asset's fetch answered, so switching songs does not refetch. */
+  const lyricsCacheRef = useRef(new Map<string, LyricsDoc | null>());
+  /** The standalone lyrics workspace, covering the window like the parameter editor does. */
+  const [lyricsEditorOpen, setLyricsEditorOpen] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
   // The order the transport walks: shuffle picks a random other song, list repeat wraps at either
@@ -654,14 +666,14 @@ export default function Home() {
       if (target instanceof HTMLInputElement && target.type !== "range") return;
       if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
       if (target instanceof HTMLElement && target.isContentEditable) return;
-      if (videoOverlay || modalOpen || authOpen || parametersOpen) return;
+      if (videoOverlay || modalOpen || authOpen || parametersOpen || lyricsEditorOpen) return;
       event.preventDefault();
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       if (asset?.kind === "audio") setPlaying((current) => !current);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [videoOverlay, modalOpen, authOpen, parametersOpen, asset]);
+  }, [videoOverlay, modalOpen, authOpen, parametersOpen, lyricsEditorOpen, asset]);
 
   async function playAsset(nextAsset: Asset, order?: string[]) {
     // Shuffle and list repeat walk songs only: a clip in the listing is dropped here, at the one
@@ -885,14 +897,51 @@ export default function Home() {
 
   const waveform = useMemo(() => Array.from({ length: 78 }, (_, index) => 18 + ((index * 37) % 68)), []);
 
-  /** Lyrics for the selected track: plain text, with any LRC time stamps stripped for display. */
-  const lyricsLines = useMemo(() => {
-    const raw = typeof asset?.metadata.lyrics === "string" ? asset.metadata.lyrics : "";
-    return raw.replace(/\r/g, "").split("\n")
-      .map((line) => line.replace(/^\s*\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]\s*/g, "").trim())
-      .filter(Boolean);
-  }, [asset?.metadata.lyrics]);
+  /**
+   * The selected song's lyrics: its stored document when it has one, else whatever its text
+   * parses into (LRC keeps its timing; plain text stays untimed). The document never rides the
+   * index stream, so it is fetched once per asset and remembered for the session.
+   */
+  useEffect(() => {
+    const current = asset;
+    if (!current || current.kind !== "audio") {
+      setLyricsDoc(null);
+      return;
+    }
+    const legacy = () => parseLyrics(typeof current.metadata.lyrics === "string" ? current.metadata.lyrics : "");
+    if (!current.apiId) {
+      setLyricsDoc(legacy());
+      return;
+    }
+    const cached = lyricsCacheRef.current.get(current.apiId);
+    if (cached !== undefined) {
+      setLyricsDoc(cached ?? legacy());
+      return;
+    }
+    const controller = new AbortController();
+    const apiId = current.apiId;
+    fetchLyricsDoc(apiId, controller.signal)
+      .then((doc) => {
+        lyricsCacheRef.current.set(apiId, doc);
+        if (!controller.signal.aborted) setLyricsDoc(doc ?? legacy());
+      })
+      .catch(() => {
+        // Offline or refused: the words the file came with are still worth reading.
+        if (!controller.signal.aborted) setLyricsDoc(legacy());
+      });
+    return () => controller.abort();
+  }, [asset?.apiId, asset?.kind, asset?.metadata.lyrics]);
 
+  /** The bar's small sheet is a reading list, not the karaoke surface: plain lines only. */
+  const lyricsPlain = useMemo(() => lyricsDoc?.lines.map((line) => line.text) ?? [], [lyricsDoc]);
+
+  /** Opens the standalone workspace; the now view and the small sheet step aside for it. */
+  function openLyricsEditor() {
+    if (!asset || asset.kind !== "audio") return;
+    if (nowOpen) setNowClosing(true);
+    setLyricsOpen(false);
+    setLyricsEditorOpen(true);
+  }
 
   function openImport() {
     setError("");
@@ -1037,20 +1086,20 @@ export default function Home() {
       <div className="shell-bg" data-raster-fill aria-hidden="true" />
       {/* Colour behind the panes: a frosted surface only reads as glass when there is something behind it to blur. */}
       <div className="ambient" aria-hidden="true"><span className="ambient-orb orb-a" /><span className="ambient-orb orb-b" /></div>
-      {!compact && <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`} data-glass-edge="">
+      {!compact && <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`} data-glass-edge="" data-glass-scene="fixed-shell">
         <div className="brand"><div className="brand-mark"><Sparkles size={17} /></div><span>onlineMusic</span></div>
         <nav className="nav-group"><p className="eyebrow">Listen</p><button className={`nav-item ${view === "studio" ? "active" : ""}`} onClick={() => goTo("studio")}><House size={17} /> Home</button><button className={`nav-item ${view === "projects" ? "active" : ""}`} onClick={() => goTo("projects")}><Music2 size={17} /> My Projects <span className="nav-count">{assets.length}</span></button><button className={`nav-item ${view === "albums" ? "active" : ""}`} onClick={() => goTo("albums")}><Disc3 size={17} /> Albums <span className="nav-count">{albums.length}</span></button><button className={`nav-item ${view === "library" ? "active" : ""}`} onClick={() => goTo("library")}><Library size={17} /> Media Library</button></nav>
         <div className="sidebar-bottom"><button className={`nav-item ${view === "settings" ? "active" : ""}`} onClick={() => goTo("settings")}><Settings size={17} /> Settings</button><button className="profile profile-button" onClick={() => { setAuthError(""); setAuthOpen(true); }}><div className="avatar">{user?.name?.slice(0,2).toUpperCase() || "JL"}</div><div><strong>{user?.name || "Guest user"}</strong><small>{user ? user.email : "Sign in to sync"}</small></div></button></div>
       </aside>}
 
       <section className="content-area">
-        <header className="topbar" data-glass-edge={compact ? undefined : ""}><button className="menu-button" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle menu"><Menu size={20} /></button><div className="breadcrumbs"><span>{viewTitles[view]}</span><ChevronDown size={14} /><strong>{view === "studio" ? "Media workspace" : view === "settings" ? "Glass, colour and background" : "Your collection"}</strong></div><div className="top-actions">{searchOpen && <input className="search-input" autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your music" />}<button className="icon-button" onClick={() => setSearchOpen((open) => !open)} aria-label="Search"><Search size={18} /></button><button className="icon-button" onClick={() => alert("Help center is available from your workspace.")} aria-label="Help"><CircleHelp size={18} /></button><button className="top-avatar top-avatar-button" onClick={() => setAuthOpen(true)}>{user?.name?.slice(0,2).toUpperCase() || "JL"}</button></div></header>
+        <header className="topbar" data-glass-edge={compact ? undefined : ""} data-glass-scene="moving-page"><button className="menu-button" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle menu"><Menu size={20} /></button><div className="breadcrumbs"><span>{viewTitles[view]}</span><ChevronDown size={14} /><strong>{view === "studio" ? "Media workspace" : view === "settings" ? "Glass, colour and background" : "Your collection"}</strong></div><div className="top-actions">{searchOpen && <input className="search-input" autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your music" />}<button className="icon-button" onClick={() => setSearchOpen((open) => !open)} aria-label="Search"><Search size={18} /></button><button className="icon-button" onClick={() => alert("Help center is available from your workspace.")} aria-label="Help"><CircleHelp size={18} /></button><button className="top-avatar top-avatar-button" onClick={() => setAuthOpen(true)}>{user?.name?.slice(0,2).toUpperCase() || "JL"}</button></div></header>
         <div className="page-content">
           {view === "settings" ? <AppearanceSettings blur={glassBlur} onBlur={setGlassBlur} clarity={glassClarity} onClarity={setGlassClarity} edge={glassEdge} onEdge={setGlassEdge} refraction={glassRefraction} onRefraction={setGlassRefraction} radius={glassRadius} onRadius={setGlassRadius} appearance={appearance} onAppearance={(patch) => setAppearance((current) => ({ ...current, ...patch }))} onClose={() => goTo("studio")} /> : view === "albums" ? <section className="collection-view"><div className="collection-heading"><h1>Albums</h1><button className="primary-button" onClick={openImport}><Plus size={17} /> Import media</button></div>{albums.length === 0 && <div className="project-grid"><div className="empty-assets">No albums yet. Import songs that carry an album tag to build your collection.</div></div>}<div className="album-grid">{albums.map((entry) => { const key = entry.album.toLowerCase(); const cover = albumCover(entry.items); const expanded = expandedAlbum === key; return <button className={`album-card ${expanded ? "is-expanded" : ""}`} key={key} onClick={() => setExpandedAlbum(expanded ? null : key)}><span className="album-card-art">{cover ? <img src={String(cover)} alt="" /> : <Disc3 size={26} />}</span><strong>{entry.album}</strong><small>{albumArtist(entry.items) || "Unknown artist"} · {entry.items.length} {entry.items.length === 1 ? "track" : "tracks"}</small></button>; })}</div>{albums.filter((entry) => entry.album.toLowerCase() === expandedAlbum).map((entry) => { const cover = albumCover(entry.items); return <section className="album-detail" key={entry.album.toLowerCase()}><header className="album-detail-head"><span className="album-cover">{cover ? <img src={String(cover)} alt="" /> : <Disc3 size={18} />}</span><div><strong>{entry.album}</strong><small>{albumArtist(entry.items) || "Unknown artist"} · {entry.items.length} {entry.items.length === 1 ? "track" : "tracks"}</small></div><button className="primary-button" onClick={() => playAlbum(entry.items, 0)}><Play size={15} /> Play all</button><button className="icon-button" onClick={() => setExpandedAlbum(null)} aria-label="Collapse album"><X size={17} /></button></header><div className="track-list">{entry.items.map((item, index) => <button className={`track-row ${asset?.file.name === item.file.name ? "is-current" : ""}`} key={item.file.name} onClick={() => playAlbum(entry.items, index)} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}><span className="track-no">{trackLabel(item, index)}</span><span className="track-title">{item.title || item.file.name}</span><small>{formatBytes(assetSize(item))}</small></button>)}</div></section>; })}<button className="back-link" onClick={() => goTo("studio")}><ArrowLeft size={16} /> Back to studio</button></section> : view !== "studio" ? <section className="collection-view"><div className="collection-heading"><h1>{view === "projects" ? "My Projects" : "Media Library"}</h1><button className="primary-button" onClick={openImport}><Plus size={17} /> New project</button></div>{listedAssets.length === 0 && <div className="project-grid"><div className="empty-assets">No saved media yet. Import a file to create your first project.</div></div>}{albumGroups.map((group) => { const cover = albumCover(group.items); return <section className="album-group" key={group.album.toLowerCase()}><header className="album-heading"><span className="album-cover">{cover ? <img src={String(cover)} alt="" /> : <Disc3 size={18} />}</span><div><strong>{group.album}</strong><small>{group.items.length} {group.items.length === 1 ? "track" : "tracks"}</small></div></header><div className="project-grid">{group.items.map(renderProjectCard)}</div></section>; })}{looseAssets.length > 0 && <div className="project-grid">{looseAssets.map(renderProjectCard)}</div>}<button className="back-link" onClick={() => goTo("studio")}><ArrowLeft size={16} /> Back to studio</button></section> : <>
           <div className="welcome-row"><h1>Your media studio <span>✦</span></h1><div className="welcome-actions"><button className="ghost-button" onClick={openImport}><Upload size={16} /> Import audio</button><button className="primary-button" onClick={openImport}><Plus size={17} /> New project</button></div></div>
           <div className="section-heading asset-heading"><h2>Your assets</h2><div className="asset-tools"><span className="asset-count">{assets.length} assets</span>{queue.length > 0 && <span className="asset-count">{queue.length} queued</span>}<button className="small-action" onClick={openImport}><Plus size={14} /> Add</button></div></div>
           <div className="asset-strip">{assets.slice(0, 4).map((item) => <button className={`asset-card ${asset?.file.name === item.file.name ? "selected-asset" : ""}`} key={item.file.name} onClick={() => { setPlaying(false); setAsset(item); }} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}><span className="asset-thumb imported">{asset?.file.name === item.file.name ? <Check size={18} /> : item.kind === "video" ? <FileVideo size={19} /> : <FileAudio size={19} />}</span><span className="asset-text"><strong>{item.title || item.file.name}</strong><small>{formatBytes(assetSize(item))} · {item.kind}</small></span></button>)}{assets.length === 0 && <div className="empty-assets">No local media yet. Import a file to begin.</div>}</div>
-          {asset?.kind === "audio" ? <section className="editor-layout"><div className="editor-panel panel"><div className="panel-heading"><div><p className="eyebrow">Selected asset</p><h2>{asset.title || asset.file.name}</h2></div><div className="panel-heading-actions"><button className="toolbar-button" onClick={() => setParametersOpen(true)}><SlidersHorizontal size={14} /> Full parameter editor</button><button className="icon-button" aria-label="Close editor" onClick={() => { setPlaying(false); setAsset(null); }}><X size={17} /></button></div></div><div className="wave-editor"><div className="wave-toolbar"><span><Activity size={15} /> Waveform</span><button className="toolbar-button" onClick={togglePlayback}>{playing ? <Pause size={14} /> : <Play size={14} />} {playing ? "Pause" : "Preview"}</button></div><WaveformTrack media={audioRef} waveform={waveform} ariaLabel="Seek waveform" /></div><div className="controls-grid"><RangeControl label="Gain" value={gain} min={0} max={100} display={`${gain}%`} onChange={setGain} /><RangeControl label="Playback rate" value={rate} min={50} max={150} display={`${(rate / 100).toFixed(2)}x`} onChange={setRate} /></div><div className="advanced-row"><button className="toolbar-button" onClick={() => setShowAdvanced((open) => !open)}><SlidersHorizontal size={14} /> {showAdvanced ? "Hide sound controls" : "More sound controls"}</button>{showAdvanced && <RangeControl label="Tone / EQ" value={eq} min={-100} max={100} display={`${eq > 0 ? "+" : ""}${eq}`} onChange={setEq} />}</div><button className="queue-add" onClick={addToQueue}><ListMusic size={14} /> Add to queue</button></div><aside className="details-column"><div className="panel metadata-panel"><div className="panel-title"><SlidersHorizontal size={16} /><h3>Metadata</h3></div>{(["title", "artist", "album", "genre"] as const).map((field) => <label key={field}>{field}<input value={asset[field]} placeholder={`Add ${field}`} onChange={(event) => updateMetadata(field, event.target.value)} /></label>)}<button className="save-button" onClick={saveMetadata}>{saved ? "Saved" : "Save metadata"}</button></div></aside></section> : <section className="empty-editor panel"><div className="empty-icon"><FolderOpen size={22} /></div><div><h2>Select an asset to edit</h2></div><button className="small-action" onClick={openImport}><Plus size={14} /> Import media</button></section>}
+          {asset?.kind === "audio" ? <section className="editor-layout"><div className="editor-panel panel"><div className="panel-heading"><div><p className="eyebrow">Selected asset</p><h2>{asset.title || asset.file.name}</h2></div><div className="panel-heading-actions"><button className="toolbar-button" onClick={openLyricsEditor}><Pencil size={14} /> Edit lyrics</button><button className="toolbar-button" onClick={() => setParametersOpen(true)}><SlidersHorizontal size={14} /> Full parameter editor</button><button className="icon-button" aria-label="Close editor" onClick={() => { setPlaying(false); setAsset(null); }}><X size={17} /></button></div></div><div className="wave-editor"><div className="wave-toolbar"><span><Activity size={15} /> Waveform</span><button className="toolbar-button" onClick={togglePlayback}>{playing ? <Pause size={14} /> : <Play size={14} />} {playing ? "Pause" : "Preview"}</button></div><WaveformTrack media={audioRef} waveform={waveform} ariaLabel="Seek waveform" /></div><div className="controls-grid"><RangeControl label="Gain" value={gain} min={0} max={100} display={`${gain}%`} onChange={setGain} /><RangeControl label="Playback rate" value={rate} min={50} max={150} display={`${(rate / 100).toFixed(2)}x`} onChange={setRate} /></div><div className="advanced-row"><button className="toolbar-button" onClick={() => setShowAdvanced((open) => !open)}><SlidersHorizontal size={14} /> {showAdvanced ? "Hide sound controls" : "More sound controls"}</button>{showAdvanced && <RangeControl label="Tone / EQ" value={eq} min={-100} max={100} display={`${eq > 0 ? "+" : ""}${eq}`} onChange={setEq} />}</div><button className="queue-add" onClick={addToQueue}><ListMusic size={14} /> Add to queue</button></div><aside className="details-column"><div className="panel metadata-panel"><div className="panel-title"><SlidersHorizontal size={16} /><h3>Metadata</h3></div>{(["title", "artist", "album", "genre"] as const).map((field) => <label key={field}>{field}<input value={asset[field]} placeholder={`Add ${field}`} onChange={(event) => updateMetadata(field, event.target.value)} /></label>)}<button className="save-button" onClick={saveMetadata}>{saved ? "Saved" : "Save metadata"}</button></div></aside></section> : <section className="empty-editor panel"><div className="empty-icon"><FolderOpen size={22} /></div><div><h2>Select an asset to edit</h2></div><button className="small-action" onClick={openImport}><Plus size={14} /> Import media</button></section>}
           </>}
         </div>
       </section>
@@ -1077,12 +1126,12 @@ export default function Home() {
         onClose={() => setParametersOpen(false)}
       />}
 
-      {view === "projects" && metadataPanelOpen && asset && <><aside className="metadata-float" data-glass-edge=""><div className="metadata-float-header"><div><p className="eyebrow">Project metadata</p><h2>{asset.title || asset.file.name}</h2></div><button className="icon-button" onClick={() => setMetadataPanelOpen(false)}><X size={17} /></button></div>{(["title", "artist", "album", "genre"] as const).map((field) => <label key={field}>{field}<input value={asset[field]} placeholder={`Add ${field}`} onChange={(event) => updateMetadata(field, event.target.value)} /></label>)}<button className="cover-button" onClick={chooseCover}><Upload size={14} /> {coverSrc(asset) ? "Change cover image" : "Add cover image"}</button></aside><input ref={coverInputRef} type="file" accept="image/*" onChange={onCoverInput} hidden /></>}
+      {view === "projects" && metadataPanelOpen && asset && <><aside className="metadata-float" data-glass-edge="" data-glass-scene="moving-page"><div className="metadata-float-header"><div><p className="eyebrow">Project metadata</p><h2>{asset.title || asset.file.name}</h2></div><button className="icon-button" onClick={() => setMetadataPanelOpen(false)}><X size={17} /></button></div>{(["title", "artist", "album", "genre"] as const).map((field) => <label key={field}>{field}<input value={asset[field]} placeholder={`Add ${field}`} onChange={(event) => updateMetadata(field, event.target.value)} /></label>)}<button className="cover-button" onClick={chooseCover}><Upload size={14} /> {coverSrc(asset) ? "Change cover image" : "Add cover image"}</button></aside><input ref={coverInputRef} type="file" accept="image/*" onChange={onCoverInput} hidden /></>}
 
       {nowOpen && <NowPlayingView
         track={nowAudio}
         cover={barCover}
-        lyrics={lyricsLines}
+        lyrics={lyricsDoc}
         queue={queueItems}
         queueNames={queueNames}
         playing={playing}
@@ -1106,6 +1155,20 @@ export default function Home() {
         onPick={(item) => { void playAsset(item, queueNames); }}
       />}
 
+      {lyricsEditorOpen && asset && <LyricsEditor
+        asset={asset}
+        doc={lyricsDoc ?? emptyLyricsDoc()}
+        media={audioRef}
+        playing={playing}
+        onTogglePlayback={togglePlayback}
+        onSaved={(doc) => {
+          // The playback page reads this state, so a saved document is live the moment it lands.
+          setLyricsDoc(doc);
+          if (asset.apiId) lyricsCacheRef.current.set(asset.apiId, doc);
+        }}
+        onClose={() => setLyricsEditorOpen(false)}
+      />}
+
       {videoOverlay && <VideoOverlay
         item={videoOverlay}
         media={videoRef}
@@ -1127,13 +1190,13 @@ export default function Home() {
       <audio ref={audioRef} preload="metadata" onError={(event) => { const element = event.currentTarget; if (asset?.kind !== "audio" || !element.getAttribute("src")) return; setMediaError("This browser cannot decode this file"); }} />
       <div ref={prefetchHostRef} className="prefetch-host" aria-hidden="true" />
 
-      {lyricsOpen && <aside className="glass-panel lyrics-panel" data-glass-edge="" aria-label="Lyrics"><header className="glass-panel-head"><div><p className="eyebrow">Lyrics</p><h3>{asset?.title || "Not Playing"}</h3></div><button className="icon-button" onClick={() => setLyricsOpen(false)} aria-label="Close lyrics"><X size={16} /></button></header>{lyricsLines.length > 0 ? <div className="lyrics-body">{lyricsLines.map((line, index) => <p key={`${index}-${line}`}>{line}</p>)}</div> : <p className="glass-empty">No lyrics found. Lyrics stored in the file&apos;s tags appear here after import.</p>}</aside>}
+      {lyricsOpen && <aside className="glass-panel lyrics-panel" data-glass-edge="" data-glass-scene="moving-page" aria-label="Lyrics"><header className="glass-panel-head"><div><p className="eyebrow">Lyrics</p><h3>{asset?.title || "Not Playing"}</h3></div><div className="lyrics-panel-actions"><button className="toolbar-button" onClick={openLyricsEditor} disabled={asset?.kind !== "audio"}><Pencil size={14} /> Edit lyrics</button><button className="icon-button" onClick={() => setLyricsOpen(false)} aria-label="Close lyrics"><X size={16} /></button></div></header>{lyricsPlain.length > 0 ? <div className="lyrics-body">{lyricsPlain.map((line, index) => <p key={`${index}-${line}`}>{line}</p>)}</div> : <p className="glass-empty">No lyrics found. Lyrics stored in the file&apos;s tags appear here after import.</p>}</aside>}
 
-      {projectsOpen && <aside className="glass-panel projects-panel" data-glass-edge="" aria-label="Projects"><header className="glass-panel-head"><div><p className="eyebrow">Projects</p><h3>{assets.length} item{assets.length === 1 ? "" : "s"}{queue.length > 0 ? ` · ${queue.length} queued` : ""}</h3></div><button className="icon-button" onClick={() => setProjectsOpen(false)} aria-label="Close projects"><X size={16} /></button></header><div className="project-list">{queue.length > 0 && <section className="project-list-group"><p className="eyebrow">Queue</p>{queue.map((name) => <span className="project-list-row is-queued" key={`queued-${name}`}><ListMusic size={14} /><span className="project-list-name">{name}</span></span>)}</section>}<section className="project-list-group"><p className="eyebrow">Media</p>{assets.map((item) => <button className={`project-list-row ${asset?.file.name === item.file.name ? "is-current" : ""}`} key={item.file.name} onClick={() => { void playAsset(item); }} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}>{item.kind === "video" ? <FileVideo size={14} /> : item.kind === "audio" ? <Music2 size={14} /> : <Layers3 size={14} />}<span className="project-list-name">{item.title || item.file.name}</span><small>{formatBytes(assetSize(item))}</small></button>)}{assets.length === 0 && <p className="glass-empty">Nothing imported yet.</p>}</section></div></aside>}
+      {projectsOpen && <aside className="glass-panel projects-panel" data-glass-edge="" data-glass-scene="moving-page" aria-label="Projects"><header className="glass-panel-head"><div><p className="eyebrow">Projects</p><h3>{assets.length} item{assets.length === 1 ? "" : "s"}{queue.length > 0 ? ` · ${queue.length} queued` : ""}</h3></div><button className="icon-button" onClick={() => setProjectsOpen(false)} aria-label="Close projects"><X size={16} /></button></header><div className="project-list">{queue.length > 0 && <section className="project-list-group"><p className="eyebrow">Queue</p>{queue.map((name) => <span className="project-list-row is-queued" key={`queued-${name}`}><ListMusic size={14} /><span className="project-list-name">{name}</span></span>)}</section>}<section className="project-list-group"><p className="eyebrow">Media</p>{assets.map((item) => <button className={`project-list-row ${asset?.file.name === item.file.name ? "is-current" : ""}`} key={item.file.name} onClick={() => { void playAsset(item); }} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}>{item.kind === "video" ? <FileVideo size={14} /> : item.kind === "audio" ? <Music2 size={14} /> : <Layers3 size={14} />}<span className="project-list-name">{item.title || item.file.name}</span><small>{formatBytes(assetSize(item))}</small></button>)}{assets.length === 0 && <p className="glass-empty">Nothing imported yet.</p>}</section></div></aside>}
 
       {compact && !videoOverlay && <BottomPill items={pillItems} current={view} onSelect={(id) => goTo(id as View)} onRaiseChange={setBubbleRaised} onBubbleMove={() => glassWebglRef.current?.refresh()} />}
 
-      {!videoOverlay && <div className={`player glass-bar ${asset?.kind === "audio" && playing ? "audio-playing" : ""}`} data-glass-edge="3"><div className="now-playing"><button className="mini-cover-button" onClick={() => setNowOpen(true)} aria-label="Open now playing" title="Now playing"><span className={`mini-cover ${playing && asset?.kind === "audio" ? "is-playing" : ""}`}>{barCover ? <img src={barCover} alt="" /> : asset?.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="mini-cover-expand" aria-hidden="true"><Maximize2 size={13} /></span></span></button><div className="now-playing-copy"><strong className={asset && (asset.title || asset.file.name).length > 28 ? "is-long-title" : ""}><span>{asset?.title || "No asset selected"}</span></strong><small className={mediaError ? "is-error" : ""}>{mediaError || (asset ? `${asset.kind} · local preview` : "Import something to begin")}</small></div></div><div className="player-controls">{canStep && <button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={() => setShuffleOn((on) => !on)} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={15} /></button>}<button className="icon-button transport-step" onClick={() => playTrack(-1)} disabled={!canStep} aria-label="Previous song" title="Previous"><SkipBack size={16} fill="currentColor" /></button><button className={`player-button ${playStarting ? "is-starting" : ""}`} onClick={togglePlayback} aria-label={playing ? "Pause" : "Play"} disabled={!asset || asset.kind !== "audio"}>{playing ? <PauseGlyph size={26} /> : <PlayGlyph size={26} />}</button><button className="icon-button transport-step" onClick={() => playTrack(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={16} fill="currentColor" /></button>{canStep && <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={() => setLoopOn((on) => !on)} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={15} /></button>}<SeekBar media={audioRef} /></div><div className={`player-actions bar-cluster ${volumeOpen ? "is-volume-open" : ""}`}><button className={`glass-button bar-tool ${lyricsOpen ? "is-active" : ""}`} data-glass-edge="1" onClick={() => { setLyricsOpen((open) => !open); setProjectsOpen(false); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button><button className={`glass-button bar-tool ${projectsOpen ? "is-active" : ""}`} data-glass-edge="1" onClick={() => { setProjectsOpen((open) => !open); setLyricsOpen(false); }} aria-label="Projects" title="Projects"><List size={17} /></button><div className={`volume-cluster ${volumeOpen ? "is-open" : ""}`}><span className="volume-slider"><input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} tabIndex={volumeOpen ? 0 : -1} aria-hidden={!volumeOpen} onChange={(event) => setGain(Number(event.target.value))} aria-label="Volume" /></span><button className={`glass-button ${volumeOpen ? "is-active" : ""}`} data-glass-edge="1" onClick={() => setVolumeOpen((open) => !open)} aria-label="Volume" title="Volume">{gain === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div></div></div>}
+      {!videoOverlay && <div className={`player glass-bar ${asset?.kind === "audio" && playing ? "audio-playing" : ""}`} data-glass-edge="3" data-glass-scene="fixed-shell"><div className="now-playing"><button className="mini-cover-button" onClick={() => setNowOpen(true)} aria-label="Open now playing" title="Now playing"><span className={`mini-cover ${playing && asset?.kind === "audio" ? "is-playing" : ""}`}>{barCover ? <img src={barCover} alt="" /> : asset?.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="mini-cover-expand" aria-hidden="true"><Maximize2 size={13} /></span></span></button><div className="now-playing-copy"><strong className={asset && (asset.title || asset.file.name).length > 28 ? "is-long-title" : ""}><span>{asset?.title || "No asset selected"}</span></strong><small className={mediaError ? "is-error" : ""}>{mediaError || (asset ? `${asset.kind} · local preview` : "Import something to begin")}</small></div></div><div className="player-controls">{canStep && <button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={() => setShuffleOn((on) => !on)} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={15} /></button>}<button className="icon-button transport-step" onClick={() => playTrack(-1)} disabled={!canStep} aria-label="Previous song" title="Previous"><SkipBack size={16} fill="currentColor" /></button><button className={`player-button ${playStarting ? "is-starting" : ""}`} onClick={togglePlayback} aria-label={playing ? "Pause" : "Play"} disabled={!asset || asset.kind !== "audio"}>{playing ? <PauseGlyph size={26} /> : <PlayGlyph size={26} />}</button><button className="icon-button transport-step" onClick={() => playTrack(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={16} fill="currentColor" /></button>{canStep && <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={() => setLoopOn((on) => !on)} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={15} /></button>}<SeekBar media={audioRef} /></div><div className={`player-actions bar-cluster ${volumeOpen ? "is-volume-open" : ""}`}><button className={`glass-button bar-tool ${lyricsOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => { setLyricsOpen((open) => !open); setProjectsOpen(false); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button><button className={`glass-button bar-tool ${projectsOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => { setProjectsOpen((open) => !open); setLyricsOpen(false); }} aria-label="Projects" title="Projects"><List size={17} /></button><div className={`volume-cluster ${volumeOpen ? "is-open" : ""}`}><span className="volume-slider"><input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} tabIndex={volumeOpen ? 0 : -1} aria-hidden={!volumeOpen} onChange={(event) => setGain(Number(event.target.value))} aria-label="Volume" /></span><button className={`glass-button ${volumeOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => setVolumeOpen((open) => !open)} aria-label="Volume" title="Volume">{gain === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div></div></div>}
 
 
       {authOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAuthOpen(false)}><div className="auth-modal" role="dialog" aria-modal="true"><div className="modal-heading"><div><p className="eyebrow">Local account</p><h2>{authMode === "login" ? "Welcome back" : "Create your account"}</h2><p>Your account stays on this device. No external service required.</p></div><button className="icon-button" onClick={() => setAuthOpen(false)}><X size={18} /></button></div>{user ? <><div className="account-badge"><UserRound size={17} /> Signed in as {user.email}</div><button className="save-button" onClick={async () => { await api.delete("/api/auth").catch(() => { /* signing out locally either way */ }); setUser(null); window.localStorage.removeItem("onlinemusic-user"); setAuthOpen(false); }}>Sign out</button></> : <form className="auth-form" onSubmit={async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const email = String(data.get("email") || "").trim().toLowerCase(); const password = String(data.get("password") || ""); const name = String(data.get("name") || email.split("@")[0] || "User"); setAuthError(""); try { const payload = await api.post<{ user: { email: string; name: string } }>("/api/auth", { mode: authMode, email, password, name }); setUser(payload.user); window.localStorage.setItem("onlinemusic-user", JSON.stringify(payload.user)); setAuthOpen(false); } catch (error) { setAuthError(error instanceof ApiError && !error.isNetwork ? error.message : "Could not reach the server — try again in a moment."); } }}><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>Log in</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => setAuthMode("register")}>Register</button></div>{authMode === "register" && <label>Name<input name="name" placeholder="Your name" /></label>}<label>Email<input name="email" type="email" required placeholder="you@example.com" /></label><label>Password<input name="password" type="password" required minLength={6} placeholder="At least 6 characters" /></label>{authError && <p className="error-message">{authError}</p>}<button className="primary-button auth-submit" type="submit"><LockKeyhole size={15} /> {authMode === "login" ? "Log in" : "Create account"}</button></form>}</div></div>}

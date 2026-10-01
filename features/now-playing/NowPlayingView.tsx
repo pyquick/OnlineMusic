@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { ChevronUp, List, MessageSquareQuote, Music2, Repeat, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react";
 import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyphs";
 import { SeekBar } from "@/features/player";
+import { PlaybackLyrics } from "@/features/lyrics";
 import { coverSrc } from "@/shared/utilities/media";
+import type { LyricsDoc } from "@/shared/lyrics";
 import type { Asset } from "@/shared/types/media";
 
 /**
@@ -12,19 +14,21 @@ import type { Asset } from "@/shared/types/media";
  *
  * What the *studio* owns is the song: the transport, the queue it walks and the artwork's colour
  * arrive as props, and every control here calls back into them. What this view owns is everything
- * about being looked at: which right-hand panel is showing, whether the disclosure is open, where
- * the phone's swipe has dragged the sheet to, and the lyric focus that falls off with distance
- * from the middle of the sheet. That state used to live in the page, which meant the page had to
- * know about gestures and artwork slots to render a view nobody could see yet — it now lives here,
- * which is also why this surface can be loaded on demand.
+ * about being looked at: which right-hand panel is showing, whether the disclosure is open, and
+ * where the phone's swipe has dragged the sheet to. The words themselves — centred live line,
+ * token fill, brightness hierarchy — are the lyrics renderer's (`features/lyrics`), which reads
+ * the media element directly so this view never re-renders once per frame. That state used to
+ * live in the page, which meant the page had to know about gestures and artwork slots to render a
+ * view nobody could see yet — it now lives here, which is also why this surface can be loaded on
+ * demand.
  */
 export type NowPlayingViewProps = {
   /** The song the transport is on, if one is loaded — the view opens onto an empty stage otherwise. */
   track: Asset | null;
   /** Its artwork, if it has any. */
   cover: string;
-  /** The song's words, already stripped of their LRC stamps. */
-  lyrics: string[];
+  /** The song's lyrics: the stored document, or what its text parsed into. */
+  lyrics: LyricsDoc | null;
   /** The songs that follow, and the order the transport walks them in. */
   queue: Asset[];
   queueNames: string[];
@@ -70,9 +74,6 @@ export default function NowPlayingView({
   const [reveal, setReveal] = useState(0);
   const [axis, setAxis] = useState<"x" | "y" | null>(null);
 
-  const lyricsRef = useRef<HTMLDivElement>(null);
-  /** The phone's words, which stand in the artwork's slot instead of in a sheet of their own. */
-  const wordsRef = useRef<HTMLDivElement>(null);
   /** True for the length of the settle after the layout flips between phone and desk. */
   const [handoff, setHandoff] = useState(false);
   const wasCompact = useRef(compact);
@@ -80,7 +81,6 @@ export default function NowPlayingView({
   const artWrapRef = useRef<HTMLDivElement>(null);
   /** The song's title, whose top edge is where the player block begins. */
   const titlesRef = useRef<HTMLDivElement>(null);
-  const lyricFrame = useRef(0);
 
   // The sheet and the artwork are one position: whatever opens or closes the drawer — the swipe,
   // Escape, focus landing on a row — the artwork steps out or comes back with it.
@@ -119,29 +119,10 @@ export default function NowPlayingView({
   }, [drawer, compact, onClose]);
 
   /**
-   * The fullscreen lyrics are read through a focus: the line nearest the middle of the sheet is the
-   * sharp one, and the words soften as they run away from it, so the page reads as a column of light
-   * rather than a wall of text. Each line carries its own `--lyric-focus` (1 at the centre, 0 at the
-   * sheet's edge) and the stylesheet turns that into a blur — the panel behind them stays plain,
-   * which is the whole point of doing it on the words.
+   * The words are the lyrics renderer's business now: it centres the live line, fills its tokens
+   * and dims the rest, all from the media element itself (`features/lyrics`). The view keeps only
+   * the phone's stage geometry, which is about the artwork's slot rather than about the words.
    */
-  function paintLyrics() {
-    lyricFrame.current = 0;
-    const sheet = wordsRef.current ?? lyricsRef.current;
-    if (!sheet) return;
-    // The phone's words are read in the upper space as a whole rather than inside the artwork's own
-    // box: the slot plus the room the centred column leaves above it. That room moves with the
-    // window, so it is measured here, where the layout is being read anyway, and the stylesheet
-    // does the centring with it.
-    const box = sheet.getBoundingClientRect();
-    const middle = box.top + box.height / 2;
-    const reach = Math.max(110, box.height * 0.5);
-    for (const line of Array.from(sheet.children) as HTMLElement[]) {
-      const rect = line.getBoundingClientRect();
-      const distance = Math.min(1, Math.abs(rect.top + rect.height / 2 - middle) / reach);
-      line.style.setProperty("--lyric-focus", (1 - distance).toFixed(3));
-    }
-  }
 
   /**
    * The phone's stage is one rectangle: the window above the player block — from the top of the
@@ -175,23 +156,7 @@ export default function NowPlayingView({
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [compact, panel, lyrics.length]);
-
-  useEffect(() => {
-    const sheet = wordsRef.current ?? lyricsRef.current;
-    if (!sheet || panel !== "lyrics") return;
-    const schedule = () => { if (!lyricFrame.current) lyricFrame.current = window.requestAnimationFrame(paintLyrics); };
-    paintLyrics();
-    sheet.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
-    return () => {
-      sheet.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
-      if (lyricFrame.current) window.cancelAnimationFrame(lyricFrame.current);
-      lyricFrame.current = 0;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panel, lyrics.length, compact]);
+  }, [compact, panel, lyrics?.lines.length]);
 
   /**
    * The small screen's way to the lyrics. The sheet is a position rather than a switch, and it is a
@@ -277,7 +242,7 @@ export default function NowPlayingView({
       <header className="now-head">
         <button className="now-close" onClick={onClose} aria-label="Close now playing" title="Close"><X size={18} /></button>
         <p className="now-kicker">Now playing</p>
-        <div className="now-volume" data-glass-edge="1">
+        <div className="now-volume" data-glass-edge="1" data-glass-scene="fixed-shell">
           <input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} onChange={(event) => onGain(Number(event.target.value))} aria-label="Volume" />
           <button className="now-volume-icon" onClick={onToggleMute} aria-label={gain === 0 ? "Unmute" : "Mute"} title={gain === 0 ? "Unmute" : "Mute"}>{gain === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
         </div>
@@ -290,9 +255,12 @@ export default function NowPlayingView({
             <div className={`now-art ${track && cover ? "" : "is-empty"}`}>{track && cover ? <img src={cover} alt="" /> : <Music2 size={72} />}</div>
             {/* The words take the artwork's place — the phone's original reading of them, kept for
                 the words alone: what rises from the bottom now is the songs that come next. */}
-            {compact && panel === "lyrics" && <div className="now-lyrics now-words" ref={wordsRef}>{lyrics.map((line, index) => <p key={index}>{line}</p>)}{lyrics.length === 0 && <p className="now-empty">No lyrics for this song yet.</p>}</div>}
+            {compact && panel === "lyrics" && <div className="now-words"><PlaybackLyrics doc={lyrics} media={media} variant="words" /></div>}
           </div>
-          <div className="now-titles" ref={titlesRef}><h2>{track ? track.title || track.file.name : "Not Playing"}</h2></div>
+          <div className="now-titles" ref={titlesRef}>
+            <h2>{track ? track.title || track.file.name : "Not Playing"}</h2>
+            {track && (track.artist || track.album) ? <p className="now-subtitle">{[track.artist, track.album].filter(Boolean).join(" — ")}</p> : null}
+          </div>
           <div className="now-progress"><SeekBar media={media} remaining disabled={!track} ariaLabel="Seek" /></div>
           <div className="now-transport">
             <button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={onToggleShuffle} disabled={!canStep} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={19} /></button>
@@ -305,13 +273,17 @@ export default function NowPlayingView({
         <div className={`now-drawer ${handoff ? "is-handoff" : ""}`} onFocus={() => setDrawer(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDrawer(false); }}>
           <aside className={`now-queue ${panel === "lyrics" ? "is-lyrics" : ""}`}>
             {panel === "queue" && <header><div className="now-queue-copy"><h3>Continue playing</h3><p>{track?.album ? `From ${track.album}` : "From all songs"}</p></div></header>}
+            {/* On the phone the drawer is not the words' home — they stand in the artwork's slot —
+                so the hidden sheet is not rendered at all: one surface, one synchroniser. */}
             {panel === "lyrics"
-              ? <div className="now-lyrics" ref={lyricsRef}>{lyrics.map((line, index) => <p key={index}>{line}</p>)}{lyrics.length === 0 && <p className="now-empty">No lyrics for this song yet.</p>}</div>
+              ? (compact ? null : <div className="now-lyrics"><PlaybackLyrics doc={lyrics} media={media} /></div>)
               : <ol>
                 {queue.map((item) => <li key={item.file.name}><button className={`now-row ${item.file.name === track?.file.name ? "is-current" : ""}`} onClick={() => onPick(item)}><span className="now-row-art">{coverSrc(item) ? <img src={coverSrc(item)} alt="" loading="lazy" decoding="async" /> : <Music2 size={14} />}</span><span className="now-row-copy"><strong>{item.title || item.file.name}</strong><small>{[item.artist, item.album].filter(Boolean).join(" — ") || "Unknown artist"}</small></span></button></li>)}
                 {queue.length === 0 && <li className="now-empty">Nothing else in this project yet.</li>}
               </ol>}
           </aside>
+          {/* The fullscreen sheet is for reading and nothing else: no editing entry lives here
+              (the user's rule) — the workspace is opened from the Home screen instead. */}
           <div className="now-switch" role="tablist" aria-label="Right panel">
             <button role="tab" aria-selected={drawer && panel === "lyrics"} className={drawer && panel === "lyrics" ? "is-on" : ""} onClick={() => { setPanel("lyrics"); setDrawer(true); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button>
             <button role="tab" aria-selected={drawer && panel === "queue"} className={drawer && panel === "queue" ? "is-on" : ""} onClick={() => { setPanel("queue"); setDrawer(true); }} aria-label="Continue playing" title="Continue playing"><List size={17} /></button>
