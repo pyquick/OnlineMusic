@@ -331,7 +331,7 @@
    re-rasterised across every pane. It is a masked 1px ring, so the white sits on the edge and
    nothing of it reaches into the pane, and it runs from its brightest at the left edge to almost
    nothing at the right — the light in this design comes from the left. */
-.glass-bar::after,.glass-panel::after,.sidebar::after,.topbar::after,.bottom-pill::after,.pill-bubble.is-raised::after,.video-overlay .video-player-dock::after{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;opacity:.55;pointer-events:none;
+.glass-bar::after,.glass-panel::after,.sidebar::after,.topbar::after,.bottom-pill::after,.pill-bubble.is-raised::after,.pill-bubble.is-travelling::after,.video-overlay .video-player-dock::after{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;opacity:.55;pointer-events:none;
   background:linear-gradient(90deg,rgba(255,255,255,1) 0%,rgba(255,255,255,.52) 34%,rgba(255,255,255,.2) 66%,rgba(255,255,255,.05) 100%);
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
   -webkit-mask-composite:xor;
@@ -555,9 +555,14 @@
    left and right ones do.
    Its horizontal travel is not a CSS transition at all: `--bubble-x` is written every frame by the
    pill's own spring (app/bottom-pill.tsx), which is what lets a press take the glass hold of
-   rather than teleport it. This list carries the rest of its geometry and its material. */
+   rather than teleport it. This list carries the rest of its geometry and its material.
+   The same loop writes the liquid: `--bubble-swell` is the trip's envelope (the capsule grown
+   around its own middle — 1 when there is no trip) and `--bubble-sx`/`--bubble-sy` are the lean
+   into its own speed, wider along the travel and a little flatter across it. One transform
+   composes them; the `scale` property stays free for the press. */
 .pill-bubble{position:absolute;z-index:0;left:0;top:5px;bottom:5px;width:var(--bubble-w,0px);border-radius:999px;
   translate:var(--bubble-x,0px) 0;pointer-events:none;
+  transform:scaleX(calc(var(--bubble-sx,1) * var(--bubble-swell,1))) scaleY(calc(var(--bubble-sy,1) * var(--bubble-swell,1)));
   /* Below the pill's own veil, so the capsule reads as a clearer window in it rather than a
      second coat of the same white. The Clarity slider moves both. */
   --glass-alpha:var(--material-veil-prominent);
@@ -577,15 +582,19 @@
    Blur and Clarity sliders do not reach this state, so what shows through is exactly what is
    behind it, bent by the rim. What gives it a body instead of a flat wash is the light: a lit
    hairline down the left edge, fading to the right (the rule above), over a bright top-left inset
-   and the same bevel the panes wear, which shades the lower edge and reads as thickness. */
-.pill-bubble.is-raised{--glass-alpha:0;top:1px;bottom:1px;z-index:2;scale:1.12;
+   and the same bevel the panes wear, which shades the lower edge and reads as thickness.
+   The liquid trip wears the same glass without being pressed: a tap on another item swells the
+   capsule into this and carries it across (`--bubble-swell`), so the two states share one rule —
+   only the press's own geometry (filling the pill, its scale) belongs to it alone. */
+.pill-bubble.is-raised,.pill-bubble.is-travelling{--glass-alpha:0;z-index:2;
   -webkit-backdrop-filter:saturate(200%);
   backdrop-filter:saturate(200%) var(--glass-edge-filter,saturate(100%));
   box-shadow:0 12px 26px rgba(20,22,36,.24),0 2px 6px rgba(20,22,36,.16),inset 1px 1px 0 rgba(255,255,255,.65),inset -1px -1px 0 rgba(255,255,255,.2),var(--glass-bevel)}
+.pill-bubble.is-raised{top:1px;bottom:1px;scale:1.12}
 /* No stroke along the resting capsule — but the ring comes back the moment it is picked up (the
    `:where()` keeps this rule at zero specificity, so the lit hairline above wins as soon as the
-   bubble is raised). That edge light, bright down the left and fading to the right, is most of
-   what makes the glass read as a solid object rather than a wash of colour. */
+   bubble is raised or on its liquid trip). That edge light, bright down the left and fading to
+   the right, is most of what makes the glass read as a solid object rather than a wash. */
 :where(.pill-bubble)::after{content:none}
 /* While the finger is carrying it, the width changes without its usual transition — the position
    is the spring's business in both states. The material still fades on its own clock, so the list

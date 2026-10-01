@@ -465,6 +465,28 @@ export default function Home() {
     window.localStorage.setItem("onlinemusic-settings", JSON.stringify({ gain, rate, volume, eq, fadeIn, fadeOut, glassBlur, glassRadius, glassClarity, glassEdge, glassBandPx: glassRefraction, appearance }));
   }, [settingsReady, gain, rate, volume, eq, fadeIn, fadeOut, glassBlur, glassRadius, glassClarity, glassEdge, glassRefraction, appearance]);
 
+  /**
+   * Every screen keeps the place it was scrolled to, like a tab. The studio scrolls the window,
+   * so without this a view change leaves the next screen parked at the old offset — the bug the
+   * user hit, where the other page arrived at exactly the same place. The position is recorded
+   * continuously, against whichever view is showing, and restored before paint — a layout effect,
+   * so the switch never flashes at the wrong offset. The first run is skipped: a reload should
+   * keep the browser's own scroll restoration.
+   */
+  const scrollByView = useRef<Partial<Record<View, number>>>({});
+  const shownView = useRef(view);
+  shownView.current = view;
+  useEffect(() => {
+    const remember = () => { scrollByView.current[shownView.current] = window.scrollY; };
+    window.addEventListener("scroll", remember, { passive: true });
+    return () => window.removeEventListener("scroll", remember);
+  }, []);
+  const restored = useRef(false);
+  useLayoutEffect(() => {
+    if (!restored.current) { restored.current = true; return; }
+    window.scrollTo({ top: scrollByView.current[view] ?? 0 });
+  }, [view]);
+
   useEffect(() => { setAutoShade(appearance.shade); touchScene(); }, [appearance]);
 
   // Starting a track gets a slow swell on the play glyph; pausing just swaps the icon.

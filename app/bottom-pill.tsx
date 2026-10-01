@@ -32,13 +32,29 @@ const SPRING_DAMPING = 22;
 const SPRING_REST = 0.15;
 /** How far the capsule must move before the WebGL rim is told about its new box. */
 const MOVE_EPSILON = 0.5;
+/**
+ * The liquid trip, for a change of item that did not come from a drag: the capsule swells into the
+ * clear glass, crosses, and contracts onto its destination — grow, hold, shrink. Seconds from
+ * lift-off; the envelope is time-based, because a spring's settle time is the same at any distance.
+ */
+const TRAVEL_GROW = 0.16;
+const TRAVEL_RISE = 0.12;
+const TRAVEL_HOLD = 0.42;
+const TRAVEL_END = 0.62;
+/** How fast the capsule must be moving before it stretches, and the most it may stretch: liquid
+    leans into its own velocity — wider along the travel, a little flatter across it. */
+const STRETCH_AT = 1500;
+const STRETCH_MAX = 0.12;
 
 /**
  * The small screen's navigation: the sidebar's items as a floating glass pill, with a capsule of
  * glass resting on the current one. Only a press that lands on the capsule — or on the little air
  * around it — takes hold of it: it comes up where it already is and follows the finger on a
- * spring. Let go, it settles onto the nearest item and opens it. A press anywhere else on the pill
- * is none of the capsule's business — it stays a plain tap, and a tap opens the item it landed on.
+ * spring, leaning into its own speed like something liquid. Let go, it settles onto the nearest
+ * item and opens it. A press anywhere else on the pill is none of the capsule's business — it
+ * stays a plain tap, and a tap opens the item it landed on; opening *another* item is the one
+ * change of place that lets the glass go: it swells into clear liquid glass, crosses, and
+ * contracts onto its new item.
  */
 export default function BottomPill({ items, current, onSelect, onRaiseChange, onBubbleMove }: Props) {
   const pillRef = useRef<HTMLElement>(null);
@@ -68,14 +84,19 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
   /**
    * The capsule's own motion. `x` is where it is drawn and `target` where the gesture says it
    * should be; the space between them is crossed by a spring, so no press can ever teleport the
-   * glass — it is taken hold of where it already is and carried with weight. The frame loop reads
-   * only refs and never state, so a render happening mid-flight cannot make it stale. `notified`
-   * remembers the last position the WebGL rim was told about.
+   * glass — it is taken hold of where it already is and carried with weight. `travel` holds the
+   * start of a liquid trip while one is running (0 when none is), which `paint` turns into the
+   * swelling that carries the glass across. The frame loop reads only refs and never state, so a
+   * render happening mid-flight cannot make it stale. `notified` remembers the last position the
+   * WebGL rim was told about.
    */
-  const spring = useRef({ x: 0, target: 0, v: 0, raf: 0, last: 0, notified: 0 });
+  const spring = useRef({ x: 0, target: 0, v: 0, raf: 0, last: 0, notified: 0, travel: 0 });
   /** A phone does not change its mind mid-session about wanting motion. */
   const reduceMotion = useRef(false);
-  const [bubble, setBubble] = useState({ index: 0, width: 0, raised: false, dragging: false });
+  /** True while the change of item was a drag settling rather than a click, so the liquid trip is
+      skipped for it — the drag is already carrying the glass over there. */
+  const fromDrag = useRef(false);
+  const [bubble, setBubble] = useState({ index: 0, width: 0, raised: false, dragging: false, travelling: false });
 
   /** Where each item sits inside the pill, read once per gesture so a move never forces layout. */
   function measure() {
@@ -102,20 +123,50 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
     } catch { /* the pointer is no longer active */ }
   }
 
-  /** Draws the capsule wherever the spring currently has it, and tells the rim when that is a
-      place it has not been shown yet. */
-  function paint() {
+  /** Draws the capsule wherever the spring currently has it — position, the liquid trip's swell,
+      the lean into its own speed — and tells the rim when that is a place it has not been shown. */
+  function paint(now = performance.now()) {
     const element = bubbleRef.current;
     if (!element) return;
     const state = spring.current;
     element.style.setProperty("--bubble-x", `${state.x}px`);
+    let swell = 1;
+    if (state.travel) {
+      const t = (now - state.travel) / 1000;
+      swell = t >= TRAVEL_END ? 1
+        : t < TRAVEL_RISE ? 1 + TRAVEL_GROW * (t / TRAVEL_RISE)
+          : t < TRAVEL_HOLD ? 1 + TRAVEL_GROW
+            : 1 + TRAVEL_GROW * (1 - (t - TRAVEL_HOLD) / (TRAVEL_END - TRAVEL_HOLD));
+    }
+    const stretch = Math.min(Math.abs(state.v) / STRETCH_AT, STRETCH_MAX);
+    element.style.setProperty("--bubble-swell", swell.toFixed(4));
+    element.style.setProperty("--bubble-sx", (1 + stretch).toFixed(4));
+    element.style.setProperty("--bubble-sy", (1 - stretch * 0.5).toFixed(4));
     if (Math.abs(state.x - state.notified) >= MOVE_EPSILON) {
       state.notified = state.x;
       moveRef.current?.();
     }
   }
 
-  /** One frame of the spring: pulled toward the target, damped, and put down when it is spent. */
+  /** Lifts the capsule into its liquid trip. The swell is timed here and drawn by `paint` on each
+      frame of the loop the placement has already started. */
+  function startTravel() {
+    if (reduceMotion.current) return;
+    spring.current.travel = performance.now();
+    setBubble((current) => (current.travelling ? current : { ...current, travelling: true }));
+    glide();
+  }
+
+  /** Ends the liquid trip: the glass is back to its resting size, wherever the spring has it. */
+  function endTravel() {
+    if (!spring.current.travel) return;
+    spring.current.travel = 0;
+    paint();
+    setBubble((current) => (current.travelling ? { ...current, travelling: false } : current));
+  }
+
+  /** One frame of the spring: pulled toward the target, damped, and put down when it is spent —
+      though a trip's swell outlives the spring on short distances, contracting in place. */
   function step(now: number) {
     const state = spring.current;
     state.raf = 0;
@@ -123,13 +174,16 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
     state.last = now;
     state.v += (SPRING_STIFFNESS * (state.target - state.x) - SPRING_DAMPING * state.v) * dt;
     state.x += state.v * dt;
-    if (Math.abs(state.target - state.x) < SPRING_REST && Math.abs(state.v) < SPRING_REST) {
-      state.x = state.target;
-      state.v = 0;
-      paint();
-      return;
-    }
-    paint();
+    const spent = Math.abs(state.target - state.x) < SPRING_REST && Math.abs(state.v) < SPRING_REST;
+    if (spent) { state.x = state.target; state.v = 0; }
+    paint(now);
+    // The trip ends on its own clock: by the envelope's end the glass is home to within a pixel,
+    // and waiting for the spring's own rest would leave the liquid material hanging on a capsule
+    // that had already stopped moving. A spring that rests early does not end it — the loop stays
+    // up so the shrink still plays out in place.
+    const swelling = state.travel !== 0 && (now - state.travel) / 1000 < TRAVEL_END;
+    if (state.travel && !swelling) endTravel();
+    if (spent && !state.travel) return;
     state.raf = window.requestAnimationFrame(step);
   }
 
@@ -154,6 +208,7 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
     state.raf = 0;
     state.x = state.target = x;
     state.v = 0;
+    state.travel = 0;
     paint();
   }
 
@@ -166,6 +221,9 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
   function raise() {
     const state = drag.current;
     if (!state) return;
+    // A finger taking hold mid-trip ends it: the press owns the glass from here, and the raised
+    // scale must not be composed with a swell that is no longer anyone's.
+    endTravel();
     state.raised = true;
     capture(state.pointer, true);
     setBubble((current) => ({ ...current, index: state.index, raised: true, dragging: true }));
@@ -198,7 +256,17 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
       spring.current.target = box.left;
       glide();
     }
-    setBubble({ index: activeRef.current, width: box.width, raised: false, dragging: false });
+    setBubble((current) => ({
+      ...current,
+      index: activeRef.current,
+      width: box.width,
+      raised: false,
+      dragging: false,
+      // A soft placement during a trip is the trip re-aiming (a resize mid-flight still has to
+      // land on the item's new box), so the liquid is kept; only the instant placement — which
+      // stops the spring — puts the glass down.
+      travelling: instant ? false : current.travelling,
+    }));
     // Settling back also restores the resting material, so the rim is told about that too.
     moveRef.current?.();
   }
@@ -212,20 +280,32 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
     reduceMotion.current = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   }, []);
   const placed = useRef(false);
+  const placedActive = useRef(active);
   useEffect(() => {
-    place(!placed.current);
+    const first = !placed.current;
+    const moved = !first && placedActive.current !== active;
+    placedActive.current = active;
+    place(first);
     placed.current = true;
+    // A change of item that did not come from a drag is the capsule's one liquid trip: it swells
+    // into the clear glass as it leaves, crosses, and contracts onto its new item. The drag's own
+    // arrival takes none — the finger has been carrying the glass there all along.
+    if (moved) {
+      if (fromDrag.current) fromDrag.current = false;
+      else startTravel();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, items.length]);
 
   // The pill's own box is the layout: when it changes — the window crossing the 680px breakpoint,
   // a rotation, the bar above growing — every item moves with it. The capsule is placed again from
   // the new boxes, and instantly, so the change of layout never reads as the capsule leaving its
-  // item.
+  // item. Mid-trip is the one exception: the glass is already in the air, so the trip is re-aimed
+  // at the item's new box instead of being snapped onto it.
   useEffect(() => {
     const pill = pillRef.current;
     if (!pill) return;
-    const observer = new ResizeObserver(() => place(true));
+    const observer = new ResizeObserver(() => place(!spring.current.travel));
     observer.observe(pill);
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -248,7 +328,13 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
     // the drag has already chosen an item.
     skipClick.current = performance.now();
     onRaiseChange?.(false);
-    if (pressed) onSelect(items[state.index].id);
+    if (pressed) {
+      // A drag that lands on a new item settles onto it under the finger: the arrival takes no
+      // liquid trip, the glass is already there. (A tap on another item does take it — the
+      // placement effect reads this flag to know the difference.)
+      fromDrag.current = items[state.index].id !== current;
+      onSelect(items[state.index].id);
+    }
     const box = measure()[state.index];
     if (box) {
       // It is put down where it stands and left to the spring to find its item — a settle, not a
@@ -346,7 +432,7 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
     >
       <span
         ref={bubbleRef}
-        className={`pill-bubble ${bubble.raised ? "is-raised" : ""} ${bubble.dragging ? "is-dragging" : ""}`}
+        className={`pill-bubble ${bubble.raised ? "is-raised" : ""} ${bubble.dragging ? "is-dragging" : ""} ${bubble.travelling ? "is-travelling" : ""}`}
         aria-hidden="true"
         // The bend is asked for at the tile's own ceiling, and the boost is what gets it there: a
         // capsule 60px tall bends across 30px — half its short side is as deep as any rim may
