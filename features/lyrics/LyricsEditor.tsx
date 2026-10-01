@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent, type RefObject } from "react";
 import { ArrowLeft, Download, FileUp, Plus, Redo2, Undo2 } from "lucide-react";
 import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyphs";
+import { RangeControl } from "@/design-system/components/RangeControl";
 import { ApiError } from "@/infrastructure/api/client";
 import {
   addLine, moveLine, moveToken, parseLyrics, setLineSpan, setTokenSpan, shiftAll, toJson, toLrc, tokenizeLineAt, type LyricsDoc,
@@ -10,7 +11,6 @@ import {
 import type { Asset } from "@/shared/types/media";
 import { saveLyricsDoc } from "./client";
 import PlaybackLyrics from "./PlaybackLyrics";
-import WaveformBand from "./WaveformBand";
 import EditorRow from "./EditorRow";
 import { stampText } from "./format";
 import "./lyrics.css";
@@ -21,8 +21,13 @@ import "./lyrics.css";
  * hands it back through `onSaved`, so the playback page starts using the new words the moment
  * they land — no reload, no second copy of the lyrics logic anywhere.
  *
+ * The window is two columns: the sentences, with their words nested under them, on the left; the
+ * live renderer and the tape (play, clock, speed, offset) on the right. There is no waveform —
+ * the words are the timeline, sentence by sentence, word by word. The speed dial is the
+ * workspace's own (0.3×–2×, opening at 1.0) and is given back when it closes.
+ *
  * The shortcuts follow a timing workflow: Space rolls the tape, Enter stamps the boundary under
- * the playhead, the arrows nudge by 1/10/100 ms, and the up and down keys walk the tokens.
+ * the playhead, the arrows nudge by 1/10/100 ms, and the up and down keys walk the words.
  */
 export type LyricsEditorProps = {
   asset: Asset;
@@ -84,6 +89,41 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
   const select = useCallback((line: number, token: number) => setSelection({ line, token }), []);
+
+  /**
+   * The workspace's own tape speed — 0.3× to 2×, always opening at 1.0 — so a line can be timed
+   * without hearing it at full tilt. It is the editor's instrument, not a setting: the studio's
+   * own rate (its 0.5–1.5× slider) is captured when the workspace opens and put back when it
+   * closes, so slow timing never survives into playback.
+   */
+  const [speed, setSpeed] = useState(1);
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
+  const restoreRate = useRef<number | null>(null);
+  useEffect(() => {
+    const element = media.current;
+    if (!element) return;
+    if (restoreRate.current === null) restoreRate.current = element.playbackRate;
+    try { element.playbackRate = speed; } catch { /* Safari refuses a rate change before metadata */ }
+  }, [media, speed]);
+  // The restore lives in its own effect: a cleanup on the effect above would run on every slider
+  // move and briefly hand the element back to the studio's rate.
+  useEffect(() => {
+    const element = media.current;
+    return () => {
+      if (element && restoreRate.current !== null) element.playbackRate = restoreRate.current;
+      restoreRate.current = null;
+    };
+  }, [media]);
+  // A changed src — an auto-advance at the end of a song — resets playbackRate, and the Safari
+  // refusal above means the write may have been dropped; loadedmetadata is where both are healed.
+  useEffect(() => {
+    const element = media.current;
+    if (!element) return;
+    const reapply = () => { try { element.playbackRate = speedRef.current; } catch { /* not ready yet */ } };
+    element.addEventListener("loadedmetadata", reapply);
+    return () => element.removeEventListener("loadedmetadata", reapply);
+  }, [media]);
 
   const historyRef = useRef<{ past: LyricsDoc[]; future: LyricsDoc[] }>({ past: [], future: [] });
   const coalesce = useRef<{ key: string; at: number } | null>(null);
@@ -337,35 +377,41 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
       </header>
       {!asset.apiId && <p className="lxe-note">This song is not in the library yet — you can export the lyrics and import them once it is uploaded.</p>}
       {error && <p className="error-message">{error}</p>}
-      <div className="lxe-wave-row">
-        <WaveformBand url={asset.url} media={media} fallbackDuration={fallbackDuration} />
-        <div className="lxe-wave-side">
-          <button className="primary-button" onClick={onTogglePlayback} aria-label={playing ? "Pause" : "Play"}>{playing ? <PauseGlyph size={18} /> : <PlayGlyph size={18} />}<span>{playing ? "Pause" : "Play"}</span></button>
-          <TimeReadout media={media} />
-          <div className="lxe-offset">
-            <label>Offset<input type="number" step="10" value={offsetMs} onChange={(event) => setOffsetMs(Number(event.target.value) || 0)} />ms</label>
-            <button className="toolbar-button" disabled={!doc.lines.some((line) => typeof line.start === "number")} onClick={() => {
-              const next = shiftAll(docRef.current, offsetMs / 1000);
-              if (next) { apply(next); setOffsetMs(0); setError(""); }
-              else setError("That offset would push times below zero.");
-            }}>Apply to all</button>
+      <div className="lxe-body">
+        <div className="lxe-editor">
+          <div className="lxe-rows" ref={rowsRef}>
+            {doc.lines.map((line, index) => (
+              <EditorRow key={index} doc={doc} index={index} duration={duration} selected={selection.line === index}
+                selectedToken={selection.line === index ? selection.token : -1}
+                onSelect={select} onApply={apply} playhead={playhead} />
+            ))}
+            {doc.lines.length === 0 && <p className="lxe-empty">Nothing here yet — import a file above, or add the first line.</p>}
+            <button className="ghost-button lxe-add-line" onClick={addFirstLine}><Plus size={14} /> Add line</button>
           </div>
-          <p className="lxe-keys">Space play · Enter stamp · ← → nudge · ↑ ↓ token · ⌘Z undo</p>
         </div>
+        <aside className="lxe-side">
+          <div className="lxe-transport">
+            <div className="lxe-transport-row">
+              <button className="primary-button" onClick={onTogglePlayback} aria-label={playing ? "Pause" : "Play"}>{playing ? <PauseGlyph size={18} /> : <PlayGlyph size={18} />}<span>{playing ? "Pause" : "Play"}</span></button>
+              <TimeReadout media={media} />
+            </div>
+            <RangeControl label="Speed" value={speed} min={0.3} max={2} step={0.05} display={`${speed.toFixed(2)}×`} onChange={setSpeed} />
+            <div className="lxe-offset">
+              <label>Offset<input type="number" step="10" value={offsetMs} onChange={(event) => setOffsetMs(Number(event.target.value) || 0)} />ms</label>
+              <button className="toolbar-button" disabled={!doc.lines.some((line) => typeof line.start === "number")} onClick={() => {
+                const next = shiftAll(docRef.current, offsetMs / 1000);
+                if (next) { apply(next); setOffsetMs(0); setError(""); }
+                else setError("That offset would push times below zero.");
+              }}>Apply to all</button>
+            </div>
+          </div>
+          <div className="lxe-preview">
+            <p className="eyebrow">Live preview — the playback page, exactly</p>
+            <div className="lxe-preview-stage"><PlaybackLyrics doc={doc} media={media} variant="preview" /></div>
+          </div>
+          <p className="lxe-keys">Space play · Enter stamp · ← → nudge · ↑ ↓ word · ⌘Z undo</p>
+        </aside>
       </div>
-      <div className="lxe-rows" ref={rowsRef}>
-        {doc.lines.map((line, index) => (
-          <EditorRow key={index} doc={doc} index={index} duration={duration} selected={selection.line === index}
-            selectedToken={selection.line === index ? selection.token : -1}
-            onSelect={select} onApply={apply} playhead={playhead} />
-        ))}
-        {doc.lines.length === 0 && <p className="lxe-empty">Nothing here yet — import a file above, or add the first line.</p>}
-        <button className="ghost-button lxe-add-line" onClick={addFirstLine}><Plus size={14} /> Add line</button>
-      </div>
-      <footer className="lxe-preview">
-        <p className="eyebrow">Live preview — the playback page, exactly</p>
-        <div className="lxe-preview-stage"><PlaybackLyrics doc={doc} media={media} variant="preview" /></div>
-      </footer>
       <input ref={importRef} type="file" accept=".lrc,.txt,.json,text/plain,application/json" hidden onChange={onImportFile} />
       {pending && (
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPending(null); }}>

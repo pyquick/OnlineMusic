@@ -34,9 +34,12 @@
 /* ── The lyrics workspace ─────────────────────────────────────────────────────
    The editor is a page of its own in everything but the URL: full window, own header, own
    history — the same pattern the parameter editor uses. It sits above the now view (which steps
-   aside when it opens) and reads the page's one audio element, so the preview below is the very
-   playback the words are being timed against. It is a work surface, not a display: precise,
-   quiet, and out of the words' way. */
+   aside when it opens) and reads the page's one audio element, so the renderer beside the
+   editor is the very playback the words are being timed against. It is a work surface, not a
+   display: precise, quiet, and out of the words' way.
+   Two columns: the sentences (words nested under them) on the left, the words as they will play
+   with the tape that drives them on the right. There is no waveform — the words are the
+   timeline, sentence by sentence, word by word. */
 .lxe{position:fixed;inset:0;z-index:var(--z-lyrics);display:flex;flex-direction:column;padding:18px clamp(16px,3vw,34px) 0;
   --lxe-field:color-mix(in srgb,var(--ink) 4%,transparent);
   background:color-mix(in srgb,var(--panel) 97%,transparent);
@@ -49,19 +52,24 @@
 .lxe-title p{margin:3px 0 0;color:var(--muted);font-size:var(--text-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lxe-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
 .lxe-note{margin:12px 0 0;color:var(--muted);font-size:var(--text-lg)}
-.lxe-wave-row{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;padding:16px 0 12px}
-.lxe-wave{position:relative;height:88px;border-radius:14px;overflow:hidden;cursor:crosshair;touch-action:none;
-  background:var(--lxe-field);border:1px solid var(--line)}
-.lxe-wave-canvas{display:block;color:var(--accent-ink)}
-.lxe-wave-head{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--accent)}
-.lxe-wave-note{position:absolute;inset:0;display:grid;place-content:center;margin:0;color:var(--muted);font-size:var(--text-lg);pointer-events:none}
-.lxe-wave-side{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:9px}
+/* The two columns: the work on the left, the words and the tape on the right. The left column is
+   the scroller — the selection-following and row dragging all happened inside a scroller before,
+   so nothing about them changes — and the right column keeps its own height, with the stage
+   shrinking to its floor rather than collapsing (a zero-height renderer would leave the sync
+   hook dividing by nothing). */
+.lxe-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,34vw,460px);gap:18px;padding:14px 0 16px}
+.lxe-editor{min-height:0;overflow-y:auto;display:flex;flex-direction:column}
+.lxe-side{min-height:0;display:flex;flex-direction:column;gap:12px}
+.lxe-transport{flex:none;display:flex;flex-direction:column;gap:12px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--lxe-field)}
+.lxe-transport-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+/* The studio's slider primitive has no display of its own; in a card it is a block. */
+.lxe-side .range-control{display:block}
 .lxe-clock{color:var(--muted);font:var(--text-lg) var(--font-mono)}
 .lxe-offset{display:flex;align-items:center;gap:8px}
 .lxe-offset label{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:var(--text-md)}
 .lxe-offset input,.lxe-time-input,.lxe-token-text{width:78px;padding:6px 8px;border-radius:9px;border:1px solid var(--line);background:var(--lxe-field);color:var(--ink);font:var(--text-md) var(--font-mono)}
-.lxe-keys{margin:0;color:var(--muted);font-size:var(--text-md);max-width:230px;text-align:right}
-.lxe-rows{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:4px 2px 18px}
+.lxe-keys{margin:0;color:var(--muted);font-size:var(--text-md);text-align:center}
+.lxe-rows{display:flex;flex-direction:column;gap:12px;padding:0 2px 18px}
 .lxe-row{border:1px solid var(--line);border-radius:16px;padding:12px 14px}
 .lxe-row.is-selected{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
 .lxe-row-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
@@ -82,7 +90,13 @@
 .lxe-tip{position:absolute;top:-24px;transform:translateX(-50%);padding:2px 7px;border-radius:7px;background:var(--ink);color:var(--panel);font:var(--text-sm) var(--font-mono);pointer-events:none}
 .lxe-tip:empty{display:none}
 .lxe-track-hint{position:absolute;inset:0;display:grid;place-content:center;color:var(--muted);font-size:var(--text-md);pointer-events:none}
-.lxe-tokens{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+/* The words are nested under the sentence they belong to: a labelled group with a rule down its
+   left, so the hierarchy — the sentence, then the subsets the fill runs through — is visible at a
+   glance. The translation above stays the sentence's own; a word never carries one. */
+.lxe-words{margin-top:10px;padding-left:12px;border-left:2px solid var(--line)}
+.lxe-words .eyebrow{margin-bottom:7px}
+.lxe-words-hint{margin:0;color:var(--muted);font-size:var(--text-md)}
+.lxe-tokens{display:flex;flex-wrap:wrap;gap:6px}
 .lxe-chip{display:inline-flex;align-items:baseline;gap:7px;padding:5px 9px;border-radius:9px;border:1px solid var(--line);background:none;color:var(--ink)}
 .lxe-chip b{font-weight:600}
 .lxe-chip small{color:var(--muted);font:var(--text-xs) var(--font-mono)}
@@ -91,16 +105,22 @@
 .lxe-token-text{flex:1;min-width:0;width:auto;font-family:var(--font-sans)}
 .lxe-empty{margin:26px 0;color:var(--muted);text-align:center}
 .lxe-add-line{align-self:flex-start}
-/* The preview is the playback page's own renderer on the playback page's own stage: the same
+/* The renderer sits beside the editor, not under it, on the playback page's own stage: the same
    24px/700 originals, the same translation line, the same fill — nothing about it changes just
-   because it is being edited. */
-.lxe-preview{flex:none;padding:10px 0 14px;border-top:1px solid var(--line)}
-.lxe-preview-stage{height:196px;border-radius:16px;overflow:hidden;padding:14px 18px;background:linear-gradient(165deg,#16171f,#0b0c13 58%,#07080d)}
+   because it is being edited. It takes whatever height the column has left, never less than its
+   floor. */
+.lxe-preview{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--line)}
+.lxe-preview-stage{flex:1;min-height:120px;border-radius:16px;overflow:hidden;padding:14px 18px;background:linear-gradient(165deg,#16171f,#0b0c13 58%,#07080d)}
 .lyr--preview{height:100%}
 .lxe-confirm-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+/* One column: the words and the tape step up (they are what the eye checks while timing), the
+   sentences scroll beneath them. The stage keeps a fixed height here — a growing one would push
+   the work off a phone's screen. */
 @media(max-width:900px){
-  .lxe-wave-row{grid-template-columns:1fr}
-  .lxe-wave-side{align-items:flex-start}
+  .lxe-body{display:flex;flex-direction:column;gap:12px}
+  .lxe-side{order:-1;flex:none}
+  .lxe-editor{flex:1;min-height:0}
+  .lxe-preview-stage{flex:none;height:150px}
   .lxe-keys{text-align:left}
   .lxe-fields{grid-template-columns:1fr}
   .lxe-head{flex-wrap:wrap}

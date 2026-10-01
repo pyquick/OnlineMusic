@@ -5,9 +5,13 @@ import { mergeLines, setLineSpan, setLineTranslation, setLineText, setTokenSpan,
 import { stampText } from "./format";
 
 /**
- * One lyric line's row: its words, its translation, its span on the ruler and its token strip.
- * The row is the unit of work in the editor — selection travels by row — and every change goes
- * up through `onApply` as a whole new document, which is what the undo stack records.
+ * One lyric line's row: the sentence, its words, its translation, its span on the ruler. The row
+ * is the unit of work in the editor — selection travels by row — and every change goes up through
+ * `onApply` as a whole new document, which is what the undo stack records.
+ *
+ * The hierarchy is the point: a sentence carries the translation (never a word), and its words —
+ * the subsets the karaoke fill runs through — are gathered in their own labelled group below it,
+ * each with its own start and end, so time is adjusted in words.
  */
 export type EditorRowProps = {
   doc: LyricsDoc;
@@ -154,26 +158,30 @@ export default function EditorRow({ doc, index, duration, selected, selectedToke
         <div className="lxe-tip" ref={tipRef} />
         {!timed && <span className="lxe-track-hint">Not timed yet — park the playhead and press Enter</span>}
       </div>
-      {(tokens.length > 0 || selectedTokenEntry) && (
-        <div className="lxe-tokens">
-          {tokens.map((token, tokenIndex) => (
-            <button type="button" key={tokenIndex} className={`lxe-chip ${selected && selectedToken === tokenIndex ? "is-selected" : ""}`}
-              onClick={() => onSelect(index, tokenIndex)} title={`${token.text} · ${stampText(token.start)} → ${stampText(token.end)}`}>
-              <b>{token.text || "·"}</b><small>{stampText(token.start)}→{stampText(token.end)}</small>
-            </button>
-          ))}
-        </div>
-      )}
-      {selectedTokenEntry && (
-        <div className="lxe-token-edit">
-          <input className="lxe-token-text" value={selectedTokenEntry.text} aria-label="Token text"
-            onChange={(event) => onApply(setTokenText(doc, index, selectedToken, event.target.value), `tokentext:${index}:${selectedToken}`)} />
-          <TimeInput value={selectedTokenEntry.start} title="Token start" onChange={(value) => onApply(setTokenSpan(doc, index, selectedToken, { start: value }))} />
-          <TimeInput value={selectedTokenEntry.end} title="Token end" onChange={(value) => onApply(setTokenSpan(doc, index, selectedToken, { end: value }))} />
-          <button type="button" className="small-action" onClick={() => onApply(setTokenSpan(doc, index, selectedToken, { end: playhead() }))} title="Stamp this token's end at the playhead">Stamp end</button>
-          <button type="button" className="small-action is-danger" onClick={() => { onApply(deleteToken(doc, index, selectedToken)); onSelect(index, -1); }}>Delete token</button>
-        </div>
-      )}
+      <div className="lxe-words">
+        <p className="lxe-words-label">Words{tokens.length > 0 ? ` · ${tokens.length}` : ""}</p>
+        {tokens.length > 0 && (
+          <div className="lxe-tokens">
+            {tokens.map((token, tokenIndex) => (
+              <button type="button" key={tokenIndex} className={`lxe-chip ${selected && selectedToken === tokenIndex ? "is-selected" : ""}`}
+                onClick={() => onSelect(index, tokenIndex)} title={`${token.text} · ${stampText(token.start)} → ${stampText(token.end)}`}>
+                <b>{token.text || "·"}</b><small>{stampText(token.start)}→{stampText(token.end)}</small>
+              </button>
+            ))}
+          </div>
+        )}
+        {tokens.length === 0 && <p className="lxe-words-hint">{timed ? "No words yet — Tokenize splits this sentence into them." : "Time the sentence first, then Tokenize it into words."}</p>}
+        {selectedTokenEntry && (
+          <div className="lxe-token-edit">
+            <input className="lxe-token-text" value={selectedTokenEntry.text} aria-label="Token text"
+              onChange={(event) => onApply(setTokenText(doc, index, selectedToken, event.target.value), `tokentext:${index}:${selectedToken}`)} />
+            <TimeInput value={selectedTokenEntry.start} title="Word start (seconds)" onChange={(value) => onApply(setTokenSpan(doc, index, selectedToken, { start: value }))} />
+            <TimeInput value={selectedTokenEntry.end} title="Word end (seconds)" onChange={(value) => onApply(setTokenSpan(doc, index, selectedToken, { end: value }))} />
+            <button type="button" className="small-action" onClick={() => onApply(setTokenSpan(doc, index, selectedToken, { end: playhead() }))} title="Stamp this word's end at the playhead">Stamp end</button>
+            <button type="button" className="small-action is-danger" onClick={() => { onApply(deleteToken(doc, index, selectedToken)); onSelect(index, -1); }}>Delete word</button>
+          </div>
+        )}
+      </div>
     </article>
   );
 }
