@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, ChangeEvent, DragEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, ChangeEvent, DragEvent, PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowLeft,
@@ -264,6 +264,77 @@ function useCompact() {
   return compact;
 }
 
+type StoredSettings = {
+  gain: number;
+  rate: number;
+  volume: number;
+  eq: number;
+  fadeIn: number;
+  fadeOut: number;
+  glassBlur: number;
+  glassRadius: number;
+  glassClarity: number;
+  glassEdge: number;
+  glassRefraction: number;
+  appearance: Appearance;
+};
+
+function readStoredSettings(): StoredSettings {
+  const defaults: StoredSettings = {
+    gain: 72,
+    rate: 100,
+    volume: 72,
+    eq: 0,
+    fadeIn: 0,
+    fadeOut: 0,
+    glassBlur: DEFAULT_GLASS_BLUR,
+    glassRadius: DEFAULT_GLASS_RADIUS,
+    glassClarity: DEFAULT_GLASS_CLARITY,
+    glassEdge: DEFAULT_GLASS_EDGE,
+    glassRefraction: DEFAULT_GLASS_REFRACTION,
+    appearance: DEFAULT_APPEARANCE,
+  };
+  if (typeof window === "undefined") return defaults;
+  const stored = window.localStorage.getItem("onlinemusic-settings");
+  if (!stored) return defaults;
+  try {
+    const data = JSON.parse(stored) as Partial<StoredSettings> & { glassBandPx?: number; glassRefraction?: number; appearance?: Partial<Appearance> };
+    const bandPx = typeof data.glassBandPx === "number"
+      ? data.glassBandPx
+      : typeof data.glassRefraction === "number"
+        ? data.glassRefraction * BAND_PERCENT_TO_PX
+        : defaults.glassRefraction;
+    return {
+      gain: typeof data.gain === "number" ? data.gain : defaults.gain,
+      rate: typeof data.rate === "number" ? data.rate : defaults.rate,
+      volume: typeof data.volume === "number" ? data.volume : defaults.volume,
+      eq: typeof data.eq === "number" ? data.eq : defaults.eq,
+      fadeIn: typeof data.fadeIn === "number" ? data.fadeIn : defaults.fadeIn,
+      fadeOut: typeof data.fadeOut === "number" ? data.fadeOut : defaults.fadeOut,
+      glassBlur: typeof data.glassBlur === "number" ? Math.max(0, Math.min(MAX_GLASS_BLUR, data.glassBlur)) : defaults.glassBlur,
+      glassRadius: typeof data.glassRadius === "number" ? Math.max(50, Math.min(150, data.glassRadius)) : defaults.glassRadius,
+      glassClarity: typeof data.glassClarity === "number" ? Math.max(0, Math.min(100, data.glassClarity)) : defaults.glassClarity,
+      glassEdge: typeof data.glassEdge === "number" ? Math.max(0, Math.min(MAX_EDGE_OFFSET, data.glassEdge)) : defaults.glassEdge,
+      glassRefraction: Math.round(Math.max(0, Math.min(MAX_BAND_PX, bandPx))),
+      appearance: data.appearance ? { ...DEFAULT_APPEARANCE, ...data.appearance } : defaults.appearance,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+type CachedUser = { email: string; name: string };
+
+function readCachedUser(): CachedUser | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = JSON.parse(window.localStorage.getItem("onlinemusic-user") || "null") as CachedUser | null;
+    return value && typeof value.email === "string" && typeof value.name === "string" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -284,7 +355,7 @@ export default function Home() {
   const [view, setView] = useState<View>("studio");
   const [expandedAlbum, setExpandedAlbum] = useState<string | null>(null);
   const [parametersOpen, setParametersOpen] = useState(false);
-  const [user, setUser] = useState<{ email: string; name: string } | null>(null);
+  const [user, setUser] = useState<CachedUser | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -345,39 +416,33 @@ export default function Home() {
   const prefetchHostRef = useRef<HTMLDivElement>(null);
   const assetStreamRef = useRef<AbortController | null>(null);
 
+  useLayoutEffect(() => {
+    const cached = readCachedUser();
+    if (cached) setUser(cached);
+  }, []);
+
   useEffect(() => {
     let active = true;
-    api.get<{ user?: { email: string; name: string } | null }>("/api/auth")
-      .then((data) => { if (active) { setUser(data.user ?? null); setAuthReady(true); } })
+    api.get<{ user?: CachedUser | null }>("/api/auth")
+      .then((data) => { if (active) { setUser(data.user ?? null); setAuthReady(true); if (data.user) window.localStorage.setItem("onlinemusic-user", JSON.stringify(data.user)); else window.localStorage.removeItem("onlinemusic-user"); } })
       .catch(() => { if (active) setAuthReady(true); });
     return () => { active = false; };
   }, []);
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem("onlinemusic-settings");
-    // An empty store must still open the write path, or a first visit would never persist anything.
-    if (stored) {
-      try {
-        const data = JSON.parse(stored) as { gain?: number; rate?: number; volume?: number; eq?: number; fadeIn?: number; fadeOut?: number; glassClarity?: number; glassBlur?: number; glassRadius?: number; glassEdge?: number; glassRefraction?: number; glassBandPx?: number; appearance?: Partial<Appearance> };
-        if (typeof data.gain === "number") setGain(data.gain);
-        if (typeof data.rate === "number") setRate(data.rate);
-        if (typeof data.volume === "number") setVolume(data.volume);
-        if (typeof data.eq === "number") setEq(data.eq);
-        if (typeof data.fadeIn === "number") setFadeIn(data.fadeIn);
-        if (typeof data.fadeOut === "number") setFadeOut(data.fadeOut);
-        if (typeof data.glassBlur === "number") setGlassBlur(Math.max(0, Math.min(MAX_GLASS_BLUR, data.glassBlur)));
-        if (typeof data.glassRadius === "number") setGlassRadius(Math.max(50, Math.min(150, data.glassRadius)));
-        if (typeof data.glassClarity === "number") setGlassClarity(Math.max(0, Math.min(100, data.glassClarity)));
-        if (typeof data.glassEdge === "number") setGlassEdge(Math.max(0, Math.min(MAX_EDGE_OFFSET, data.glassEdge)));
-        // `glassRefraction` was that band as a percent of the pane's short side; it becomes px at
-        // the rate the old default (12%) and the new one (30px) imply, so the stored look holds.
-        const bandPx = typeof data.glassBandPx === "number" ? data.glassBandPx : typeof data.glassRefraction === "number" ? data.glassRefraction * BAND_PERCENT_TO_PX : null;
-        if (bandPx !== null) setGlassRefraction(Math.round(Math.max(0, Math.min(MAX_BAND_PX, bandPx))));
-        // Spread over the defaults, so a blob saved before the tint or the backdrop existed opens
-        // with those at their defaults rather than undefined.
-        if (data.appearance) setAppearance({ ...DEFAULT_APPEARANCE, ...data.appearance });
-      } catch { /* ignore malformed local preferences */ }
-    }
+  useLayoutEffect(() => {
+    const current = readStoredSettings();
+    setGain(current.gain);
+    setRate(current.rate);
+    setVolume(current.volume);
+    setEq(current.eq);
+    setFadeIn(current.fadeIn);
+    setFadeOut(current.fadeOut);
+    setGlassBlur(current.glassBlur);
+    setGlassRadius(current.glassRadius);
+    setGlassClarity(current.glassClarity);
+    setGlassEdge(current.glassEdge);
+    setGlassRefraction(current.glassRefraction);
+    setAppearance(current.appearance);
     setSettingsReady(true);
   }, []);
 
@@ -1068,10 +1133,10 @@ export default function Home() {
 
       {compact && !videoOverlay && <BottomPill items={pillItems} current={view} onSelect={(id) => goTo(id as View)} onRaiseChange={setBubbleRaised} onBubbleMove={() => glassWebglRef.current?.refresh()} />}
 
-      {!videoOverlay && <div className={`player glass-bar ${asset?.kind === "audio" && playing ? "audio-playing" : ""}`} data-glass-edge="3"><div className="now-playing"><button className="mini-cover-button" onClick={() => setNowOpen(true)} aria-label="Open now playing" title="Now playing"><span className={`mini-cover ${playing && asset?.kind === "audio" ? "is-playing" : ""}`}>{barCover ? <img src={barCover} alt="" /> : asset?.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="mini-cover-expand" aria-hidden="true"><Maximize2 size={13} /></span></span></button><div className="now-playing-copy"><strong className={asset && (asset.title || asset.file.name).length > 28 ? "is-long-title" : ""}><span>{asset?.title || "No asset selected"}</span></strong><small className={mediaError ? "is-error" : ""}>{mediaError || (asset ? `${asset.kind} · local preview` : "Import something to begin")}</small></div></div><div className="player-controls">{canStep && <button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={() => setShuffleOn((on) => !on)} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={15} /></button>}<button className="icon-button transport-step" onClick={() => playTrack(-1)} disabled={!canStep} aria-label="Previous song" title="Previous"><SkipBack size={16} fill="currentColor" /></button><button className={`player-button ${playStarting ? "is-starting" : ""}`} onClick={togglePlayback} aria-label={playing ? "Pause" : "Play"} disabled={!asset || asset.kind !== "audio"}>{playing ? <PauseGlyph size={26} /> : <PlayGlyph size={26} />}</button><button className="icon-button transport-step" onClick={() => playTrack(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={16} fill="currentColor" /></button>{canStep && <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={() => setLoopOn((on) => !on)} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={15} /></button>}<SeekBar media={audioRef} /></div><div className={`player-actions bar-cluster ${volumeOpen ? "is-volume-open" : ""}`}><button className={`glass-button bar-tool ${lyricsOpen ? "is-active" : ""}`} onClick={() => { setLyricsOpen((open) => !open); setProjectsOpen(false); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button><button className={`glass-button bar-tool ${projectsOpen ? "is-active" : ""}`} onClick={() => { setProjectsOpen((open) => !open); setLyricsOpen(false); }} aria-label="Projects" title="Projects"><List size={17} /></button><div className={`volume-cluster ${volumeOpen ? "is-open" : ""}`}><span className="volume-slider"><input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} tabIndex={volumeOpen ? 0 : -1} aria-hidden={!volumeOpen} onChange={(event) => setGain(Number(event.target.value))} aria-label="Volume" /></span><button className={`glass-button ${volumeOpen ? "is-active" : ""}`} onClick={() => setVolumeOpen((open) => !open)} aria-label="Volume" title="Volume">{gain === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div></div></div>}
+      {!videoOverlay && <div className={`player glass-bar ${asset?.kind === "audio" && playing ? "audio-playing" : ""}`} data-glass-edge="3"><div className="now-playing"><button className="mini-cover-button" onClick={() => setNowOpen(true)} aria-label="Open now playing" title="Now playing"><span className={`mini-cover ${playing && asset?.kind === "audio" ? "is-playing" : ""}`}>{barCover ? <img src={barCover} alt="" /> : asset?.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="mini-cover-expand" aria-hidden="true"><Maximize2 size={13} /></span></span></button><div className="now-playing-copy"><strong className={asset && (asset.title || asset.file.name).length > 28 ? "is-long-title" : ""}><span>{asset?.title || "No asset selected"}</span></strong><small className={mediaError ? "is-error" : ""}>{mediaError || (asset ? `${asset.kind} · local preview` : "Import something to begin")}</small></div></div><div className="player-controls">{canStep && <button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={() => setShuffleOn((on) => !on)} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={15} /></button>}<button className="icon-button transport-step" onClick={() => playTrack(-1)} disabled={!canStep} aria-label="Previous song" title="Previous"><SkipBack size={16} fill="currentColor" /></button><button className={`player-button ${playStarting ? "is-starting" : ""}`} onClick={togglePlayback} aria-label={playing ? "Pause" : "Play"} disabled={!asset || asset.kind !== "audio"}>{playing ? <PauseGlyph size={26} /> : <PlayGlyph size={26} />}</button><button className="icon-button transport-step" onClick={() => playTrack(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={16} fill="currentColor" /></button>{canStep && <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={() => setLoopOn((on) => !on)} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={15} /></button>}<SeekBar media={audioRef} /></div><div className={`player-actions bar-cluster ${volumeOpen ? "is-volume-open" : ""}`}><button className={`glass-button bar-tool ${lyricsOpen ? "is-active" : ""}`} data-glass-edge="1" onClick={() => { setLyricsOpen((open) => !open); setProjectsOpen(false); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button><button className={`glass-button bar-tool ${projectsOpen ? "is-active" : ""}`} data-glass-edge="1" onClick={() => { setProjectsOpen((open) => !open); setLyricsOpen(false); }} aria-label="Projects" title="Projects"><List size={17} /></button><div className={`volume-cluster ${volumeOpen ? "is-open" : ""}`}><span className="volume-slider"><input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} tabIndex={volumeOpen ? 0 : -1} aria-hidden={!volumeOpen} onChange={(event) => setGain(Number(event.target.value))} aria-label="Volume" /></span><button className={`glass-button ${volumeOpen ? "is-active" : ""}`} data-glass-edge="1" onClick={() => setVolumeOpen((open) => !open)} aria-label="Volume" title="Volume">{gain === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div></div></div>}
 
 
-      {authOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAuthOpen(false)}><div className="auth-modal" role="dialog" aria-modal="true"><div className="modal-heading"><div><p className="eyebrow">Local account</p><h2>{authMode === "login" ? "Welcome back" : "Create your account"}</h2><p>Your account stays on this device. No external service required.</p></div><button className="icon-button" onClick={() => setAuthOpen(false)}><X size={18} /></button></div>{user ? <><div className="account-badge"><UserRound size={17} /> Signed in as {user.email}</div><button className="save-button" onClick={async () => { await api.delete("/api/auth").catch(() => { /* signing out locally either way */ }); setUser(null); setAuthOpen(false); }}>Sign out</button></> : <form className="auth-form" onSubmit={async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const email = String(data.get("email") || "").trim().toLowerCase(); const password = String(data.get("password") || ""); const name = String(data.get("name") || email.split("@")[0] || "User"); setAuthError(""); try { const payload = await api.post<{ user: { email: string; name: string } }>("/api/auth", { mode: authMode, email, password, name }); setUser(payload.user); setAuthOpen(false); } catch (error) { setAuthError(error instanceof ApiError && !error.isNetwork ? error.message : "Could not reach the server — try again in a moment."); } }}><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>Log in</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => setAuthMode("register")}>Register</button></div>{authMode === "register" && <label>Name<input name="name" placeholder="Your name" /></label>}<label>Email<input name="email" type="email" required placeholder="you@example.com" /></label><label>Password<input name="password" type="password" required minLength={6} placeholder="At least 6 characters" /></label>{authError && <p className="error-message">{authError}</p>}<button className="primary-button auth-submit" type="submit"><LockKeyhole size={15} /> {authMode === "login" ? "Log in" : "Create account"}</button></form>}</div></div>}
+      {authOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAuthOpen(false)}><div className="auth-modal" role="dialog" aria-modal="true"><div className="modal-heading"><div><p className="eyebrow">Local account</p><h2>{authMode === "login" ? "Welcome back" : "Create your account"}</h2><p>Your account stays on this device. No external service required.</p></div><button className="icon-button" onClick={() => setAuthOpen(false)}><X size={18} /></button></div>{user ? <><div className="account-badge"><UserRound size={17} /> Signed in as {user.email}</div><button className="save-button" onClick={async () => { await api.delete("/api/auth").catch(() => { /* signing out locally either way */ }); setUser(null); window.localStorage.removeItem("onlinemusic-user"); setAuthOpen(false); }}>Sign out</button></> : <form className="auth-form" onSubmit={async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const email = String(data.get("email") || "").trim().toLowerCase(); const password = String(data.get("password") || ""); const name = String(data.get("name") || email.split("@")[0] || "User"); setAuthError(""); try { const payload = await api.post<{ user: { email: string; name: string } }>("/api/auth", { mode: authMode, email, password, name }); setUser(payload.user); window.localStorage.setItem("onlinemusic-user", JSON.stringify(payload.user)); setAuthOpen(false); } catch (error) { setAuthError(error instanceof ApiError && !error.isNetwork ? error.message : "Could not reach the server — try again in a moment."); } }}><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>Log in</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => setAuthMode("register")}>Register</button></div>{authMode === "register" && <label>Name<input name="name" placeholder="Your name" /></label>}<label>Email<input name="email" type="email" required placeholder="you@example.com" /></label><label>Password<input name="password" type="password" required minLength={6} placeholder="At least 6 characters" /></label>{authError && <p className="error-message">{authError}</p>}<button className="primary-button auth-submit" type="submit"><LockKeyhole size={15} /> {authMode === "login" ? "Log in" : "Create account"}</button></form>}</div></div>}
 
       {modalOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setModalOpen(false)}><div className="upload-modal" role="dialog" aria-modal="true"><div className="modal-heading"><div><p className="eyebrow">Local import</p><h2>Bring media into the studio</h2><p>Files stay in this browser session until you choose to remove them.</p></div><button className="icon-button" onClick={() => setModalOpen(false)} aria-label="Close upload dialog"><X size={18} /></button></div><div className={`dropzone ${dragging ? "dragging" : ""}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={onDrop} onClick={chooseFile}><div className="drop-icon"><Upload size={23} /></div><h3>Drop audio or video here</h3><p>or <span>browse files</span> from your computer — pick several at once to import a full album</p><small>Maximum file size: 250 MB</small></div>{error && <p className="error-message">{error}</p>}<div className="format-list"><strong>Accepted formats</strong><div>{acceptedFormats.map((format) => <span key={format}>{format}</span>)}</div></div><input ref={inputRef} type="file" accept={acceptedExtensions} onChange={onInput} multiple hidden /></div></div>}
     </div>

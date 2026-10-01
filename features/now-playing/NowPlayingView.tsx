@@ -277,7 +277,7 @@ export default function NowPlayingView({
       <header className="now-head">
         <button className="now-close" onClick={onClose} aria-label="Close now playing" title="Close"><X size={18} /></button>
         <p className="now-kicker">Now playing</p>
-        <div className="now-volume">
+        <div className="now-volume" data-glass-edge="1">
           <input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} onChange={(event) => onGain(Number(event.target.value))} aria-label="Volume" />
           <button className="now-volume-icon" onClick={onToggleMute} aria-label={gain === 0 ? "Unmute" : "Mute"} title={gain === 0 ? "Unmute" : "Mute"}>{gain === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
         </div>
