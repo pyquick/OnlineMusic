@@ -159,7 +159,7 @@ export default function EditorRow({ doc, index, duration, selected, selectedToke
         {!timed && <span className="lxe-track-hint">Not timed yet — park the playhead and press Enter</span>}
       </div>
       <div className="lxe-words">
-        <p className="lxe-words-label">Words{tokens.length > 0 ? ` · ${tokens.length}` : ""}</p>
+        <p className="eyebrow">Words{tokens.length > 0 ? ` · ${tokens.length}` : ""}</p>
         {tokens.length > 0 && (
           <div className="lxe-tokens">
             {tokens.map((token, tokenIndex) => (
