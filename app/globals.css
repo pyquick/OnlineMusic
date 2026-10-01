@@ -525,7 +525,11 @@
    Below 680px the sidebar is not rendered at all: these five items are the whole of the
    navigation, and the pill floats at the foot of the screen with the player bar above it. */
 @keyframes pill-in{from{translate:0 22px}to{translate:0 0}}
-.bottom-pill{position:fixed;z-index:var(--z-float);left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);height:var(--pill-h,64px);display:flex;align-items:stretch;padding:6px;border-radius:999px;touch-action:none;user-select:none;-webkit-user-select:none;animation:pill-in .3s var(--ease-glass) both}
+/* The browser's own touch feedback is turned off here: on Android the tap highlight is a band of
+   pale blue painted over whatever was touched, and on the capsule's spot it reads as a foreign
+   rectangle rather than as the glass. The pill answers a press with the raised capsule instead.
+   (The property inherits, so the items and their glyphs are covered too.) */
+.bottom-pill{position:fixed;z-index:var(--z-float);left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);height:var(--pill-h,64px);display:flex;align-items:stretch;padding:6px;border-radius:999px;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;animation:pill-in .3s var(--ease-glass) both}
 /* The item itself is not a run — its icon is an SVG and its words live in a child span — so it
    wears the mix the pane carries for exactly that case: the glyphs and the words under them stay
    one colour however dark or light the glass under the pill goes. */
@@ -548,7 +552,10 @@
    `--glass-pull-cap`): a capsule this short cannot wear the band the sliders give the tall panes
    without the whole tile turning into rim. Both edges of both axes bend — the map carries the
    horizontal pull in R and the vertical in G, so the top and bottom rims refract exactly as the
-   left and right ones do. */
+   left and right ones do.
+   Its horizontal travel is not a CSS transition at all: `--bubble-x` is written every frame by the
+   pill's own spring (app/bottom-pill.tsx), which is what lets a press take the glass hold of
+   rather than teleport it. This list carries the rest of its geometry and its material. */
 .pill-bubble{position:absolute;z-index:0;left:0;top:5px;bottom:5px;width:var(--bubble-w,0px);border-radius:999px;
   translate:var(--bubble-x,0px) 0;pointer-events:none;
   /* Below the pill's own veil, so the capsule reads as a clearer window in it rather than a
@@ -559,11 +566,10 @@
   -webkit-backdrop-filter:saturate(170%);
   backdrop-filter:saturate(170%);
   box-shadow:0 8px 18px rgba(20,22,36,.16),0 1px 3px rgba(20,22,36,.1);
-  transition:translate .32s var(--ease-glass),width .28s var(--ease-glass),top .22s var(--ease-glass),bottom .22s var(--ease-glass),scale .22s var(--ease-glass),background-color .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}
+  transition:width .28s var(--ease-glass),top .22s var(--ease-glass),bottom .22s var(--ease-glass),scale .22s var(--ease-glass),background-color .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}
 /* Raised, the veil is gone and the frost and the bend have arrived: the capsule is clear glass
    over the pill, its rim bending the icons and labels it is covering — the same map and the same
-   Settings every pane's edge is built from, held to this tile's own 13px/9px ceiling. It grows by
-   filling the pill rather than by scaling, so it never leaves the pill's own outline. */
+   Settings every pane's edge is built from, held to this tile's own 22px/15px ceiling. */
 /* Pressed it also grows, as one piece: a straight scale keeps a capsule's proportions and its
    radius, and what it buys is the overhang — about 3px of glass past the pill on every side,
    which is what reads as the capsule having been picked up rather than merely recoloured. */
@@ -581,9 +587,10 @@
    bubble is raised). That edge light, bright down the left and fading to the right, is most of
    what makes the glass read as a solid object rather than a wash of colour. */
 :where(.pill-bubble)::after{content:none}
-/* While the finger is carrying it, the capsule follows with no easing of its own — but the
-   material still fades on its own clock, so the list keeps those terms rather than dropping the
-   whole transition (which is what used to make the fade snap). */
+/* While the finger is carrying it, the width changes without its usual transition — the position
+   is the spring's business in both states. The material still fades on its own clock, so the list
+   keeps those terms rather than dropping the whole transition (which is what used to make the
+   fade snap). */
 .pill-bubble.is-dragging{transition:top .22s var(--ease-glass),bottom .22s var(--ease-glass),scale .22s var(--ease-glass),background-color .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}
 
 /* ── The small-screen shell ──────────────────────────────────────────────────
