@@ -42,7 +42,7 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
         <button className="ghost-button" onClick={onClose}><X size={16} /> Close</button>
       </header>
 
-      <div className="settings-card panel">
+      <div className="settings-card panel" data-glass-edge="">
         <div className="panel-title"><h3>Glass tint</h3></div>
         <div className="settings-page-body">
           <div className="swatch-row">
@@ -58,7 +58,7 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
         </div>
       </div>
 
-      <div className="settings-card panel">
+      <div className="settings-card panel" data-glass-edge="">
         <div className="panel-title"><h3>Background</h3></div>
         <div className="settings-page-body">
           <div className="segmented">
@@ -95,7 +95,7 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
         </div>
       </div>
 
-      <div className="settings-card panel">
+      <div className="settings-card panel" data-glass-edge="">
         <div className="panel-title"><h3>Liquid glass</h3></div>
         <div className="settings-page-body">
           <RangeControl label="Blur" value={blur} min={0} max={MAX_GLASS_BLUR} step={GLASS_BLUR_STEP} display={`${blur}px`} onChange={onBlur} />

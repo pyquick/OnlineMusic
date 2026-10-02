@@ -42,18 +42,18 @@ export default function ParametersScreen({
   return (
     <section className="parameter-screen">
       <div className="parameter-header"><h1>{title}</h1><button className="ghost-button" onClick={onClose}><X size={16} /> Close editor</button></div>
-      <div className="parameter-wave-card">
+      <div className="parameter-wave-card" data-glass-edge="">
         <div className="wave-toolbar"><span><Activity size={15} /> Editable waveform</span><span className="wave-hint">Click anywhere to seek</span></div>
         <WaveformTrack media={media} waveform={waveform} ariaLabel="Seek waveform in parameter editor" />
       </div>
       <div className="parameter-grid">
-        <div className="parameter-card">
+        <div className="parameter-card" data-glass-edge="">
           <div className="panel-title"><Activity size={17} /><h3>Playback</h3></div>
           <RangeControl label="Playback rate" value={rate} min={25} max={200} display={`${(rate / 100).toFixed(2)}x`} onChange={onRate} />
           <RangeControl label="Preview volume" value={volume} min={0} max={100} display={`${volume}%`} onChange={onVolume} />
           <button className="primary-button" onClick={onTogglePlayback}>{playing ? <Pause size={15} /> : <Play size={15} />} {playing ? "Pause preview" : "Play preview"}</button>
         </div>
-        <div className="parameter-card">
+        <div className="parameter-card" data-glass-edge="">
           <div className="panel-title"><SlidersHorizontal size={17} /><h3>Dynamics &amp; tone</h3></div>
           <RangeControl label="Gain" value={gain} min={0} max={150} display={`${gain}%`} onChange={onGain} />
           <RangeControl label="Tone / EQ" value={eq} min={-100} max={100} display={`${eq > 0 ? "+" : ""}${eq}`} onChange={onEq} />

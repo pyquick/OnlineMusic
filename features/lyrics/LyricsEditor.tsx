@@ -390,7 +390,7 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
           </div>
         </div>
         <aside className="lxe-side">
-          <div className="lxe-transport">
+          <div className="lxe-transport" data-glass-edge="">
             <div className="lxe-transport-row">
               <button className="primary-button" onClick={onTogglePlayback} aria-label={playing ? "Pause" : "Play"}>{playing ? <PauseGlyph size={18} /> : <PlayGlyph size={18} />}<span>{playing ? "Pause" : "Play"}</span></button>
               <TimeReadout media={media} />
@@ -415,7 +415,7 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
       <input ref={importRef} type="file" accept=".lrc,.txt,.json,text/plain,application/json" hidden onChange={onImportFile} />
       {pending && (
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPending(null); }}>
-          <div className="auth-modal" role="dialog" aria-modal="true">
+          <div className="auth-modal" data-glass-edge="" role="dialog" aria-modal="true">
             <p>{pending.message}</p>
             <div className="lxe-confirm-actions">
               <button className="ghost-button" onClick={() => setPending(null)}>Cancel</button>

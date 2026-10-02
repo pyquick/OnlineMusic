@@ -53,7 +53,7 @@
 /** Largest rim pull the slider can ask for, in CSS px. */
 export const MAX_EDGE_OFFSET = 48;
 /** Largest rim band the slider can ask for, in CSS px. */
-export const MAX_BAND_PX = 82;
+export const MAX_BAND_PX = 84;
 /**
  * The band never reaches past a pane's midline, so the bend is flat again by the middle whatever
  * the slider says: on a pane shorter than twice the band it is the pane that decides the width.

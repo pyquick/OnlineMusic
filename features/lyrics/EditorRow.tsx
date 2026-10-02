@@ -130,7 +130,7 @@ export default function EditorRow({ doc, index, duration, selected, selectedToke
   }
 
   return (
-    <article className={`lxe-row ${selected ? "is-selected" : ""}`} data-lxe-row={index} onPointerDown={() => onSelect(index, selectedToken)}>
+    <article className={`lxe-row ${selected ? "is-selected" : ""}`} data-glass-edge="" data-lxe-row={index} onPointerDown={() => onSelect(index, selectedToken)}>
       <header className="lxe-row-head">
         <span className="lxe-index">{index + 1}</span>
         <TimeInput value={line.start} title="Line start (seconds)" onChange={(value) => onApply(setLineSpan(doc, index, { start: value }))} />
