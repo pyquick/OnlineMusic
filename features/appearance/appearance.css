@@ -1,25 +1,19 @@
 /* ── Liquid glass · per control (Settings) ────────────────────────────────────
-   The live preview for the per-family edge refraction. The backdrop is a real DOM scene
-   (`.lgs-scene`), swappable between three moods through `data-scene` — DOM rather than one
-   painted pattern, because its parts carry content at different brightnesses, which is what the
-   rim bends and what the rainbow reads. Each sample names its family in `--glass-group`, the
-   same property the app's controls carry. */
+   The live preview for the per-family edge refraction. The backdrop is a photograph
+   (`/preview-lake.jpg`) — real detail for the rims to bend, real brightness for the rainbow to
+   read (the ink sampler measures the photo under each sample). Each sample names its family in
+   `--glass-group`, the same property the app's controls carry, so what is tuned here is what the
+   studio wears. */
 .lgs-stage{position:relative;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:14px;height:220px;margin:4px 0 14px;padding:14px;border-radius:var(--radius-card);overflow:hidden;border:1px solid var(--line);background:var(--panel2)}
-.lgs-scene{position:absolute;inset:0;z-index:0;pointer-events:none;display:grid;grid-template-columns:1.1fr 1.2fr 1fr;gap:10px;padding:12px;background:var(--s-bg,#eef1f8)}
-.lgs-scene .lgs-shot{border-radius:12px;background:var(--s-shot,#fff)}
-.lgs-mock,.lgs-list{display:flex;flex-direction:column;justify-content:center;gap:7px;padding:12px;border-radius:12px;background:var(--s-mock,#fff)}
-.lgs-mock b{font-size:13px;font-weight:700;color:var(--s-ink,#1b2030)}
-.lgs-mock i,.lgs-list i{height:7px;border-radius:3px;background:var(--s-bar,#d3d8e6)}
-.lgs-list{gap:9px;background:var(--s-list,#f7f9fd)}
-.lgs-scene[data-scene="colour"]{--s-bg:#241f2e;--s-shot:#e5484d;--s-mock:#3a3348;--s-ink:#f4f1fb;--s-bar:#6d5f8f;--s-list:#2d2740}
-/* Night keeps one lit block, so a single sample can show both ends of the rainbow at once. */
-.lgs-scene[data-scene="night"]{--s-bg:#0d0f15;--s-shot:#1a1e27;--s-mock:#161a23;--s-ink:#e8ecf7;--s-bar:#2c3342;--s-list:#fff}
-.lgs-sample{--glass-alpha:var(--material-veil-prominent);position:relative;z-index:1;
-  display:grid;place-items:center;border:1px solid var(--chip-line);border-radius:var(--radius-control);
-  background:color-mix(in srgb,var(--panel) calc(var(--glass-alpha,1) * 100%),transparent);
-  color:var(--ink);font-size:var(--text-md);font-weight:600;
-  -webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));
-  backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
+.lgs-photo{position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
+/* Clear glass, deliberately: no veil and no blur. Over a photograph a milky pane and a frosted
+   blur both read as a grey mask laid on the picture — and the blur also smears the very detail
+   the rim is displacing (the lesson the pill's bubble taught). What is left is the glass itself:
+   the edge lens and its rainbow, over a photo that runs through the control untouched. */
+.lgs-sample{position:relative;z-index:1;display:grid;place-items:center;border:1px solid var(--chip-line);border-radius:var(--radius-control);background:none;
+  color:var(--ink);font-size:var(--text-md);font-weight:600;text-shadow:0 1px 3px #fff9;
+  -webkit-backdrop-filter:saturate(var(--material-saturate));
+  backdrop-filter:saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
 /* The families, in the same names the app's class lists carry. */
 .lgs-pane{--glass-group:pane;width:118px;height:64px;border-radius:var(--radius-card)}
 .lgs-card{--glass-group:card;width:132px;height:72px;border-radius:var(--radius-card)}

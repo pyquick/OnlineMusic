@@ -23,21 +23,6 @@ const GLASS_FAMILIES: { id: GlassGroup; label: string }[] = [
   { id: "tile", label: "Bar tiles" },
 ];
 
-/**
- * The scenes the preview stage's backdrop can wear. The backdrop is a real DOM tree — the preview
- * used to sit on one painted stripe pattern, which is exactly what the user asked to be rid of:
- * a mutable DOM that can be swapped for anything, and whose parts differ in brightness, because
- * the rainbow is brightest where the backdrop is (the sampler measures each pane and both engines
- * scale the split by it). "Studio" is the paper-bright case, "Colour" the saturated one, "Night"
- * a dark scene with one lit block so a single sample can show both ends at once.
- */
-const LGS_SCENES = [
-  { id: "studio", label: "Studio" },
-  { id: "colour", label: "Colour" },
-  { id: "night", label: "Night" },
-] as const;
-type LgsScene = (typeof LGS_SCENES)[number]["id"];
-
 export type SettingsViewProps = {
   blur: number; onBlur: (next: number) => void;
   clarity: number; onClarity: (next: number) => void;
@@ -57,7 +42,6 @@ export type SettingsViewProps = {
 export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, edge, onEdge, refraction, onRefraction, dispersion, onDispersion, radius, onRadius, appearance, onAppearance, groups, onGroups, onClose }: SettingsViewProps) {
   const [imageError, setImageError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [scene, setScene] = useState<LgsScene>("studio");
   const imageInput = useRef<HTMLInputElement>(null);
 
   async function chooseBackgroundImage(file: File | undefined) {
@@ -144,21 +128,12 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
         <div className="panel-title"><h3>Liquid glass · per control</h3></div>
         <div className="settings-page-body">
           <RangeControl label="Rainbow dispersion" value={dispersion} min={0} max={100} display={`${dispersion}%`} onChange={onDispersion} />
-          <p className="settings-hint">The master prism: one dial splits every rim&rsquo;s refraction into its colours, and each pane takes its own share from the measured brightness of what it covers — the brighter the place, the wider the rainbow. Below, every family carries its own edge distortion (how hard the rim bends the backdrop) and edge refraction (how far in the bend reaches); the preview backdrop is a live DOM scene and answers every slider at once.</p>
-          <div className="segmented lgs-scenes">
-            {LGS_SCENES.map((entry) => (
-              <button key={entry.id} type="button" data-glass-edge="" className={scene === entry.id ? "is-on" : ""} onClick={() => setScene(entry.id)}>{entry.label}</button>
-            ))}
-          </div>
+          <p className="settings-hint">The master prism: one dial splits every rim&rsquo;s refraction into its colours, and each pane takes its own share from the measured brightness of what it covers — the brighter the place, the wider the rainbow. Below, every family carries its own edge distortion (how hard the rim bends the backdrop) and edge refraction (how far in the bend reaches); the preview controls sit on a real photograph and answer every slider at once.</p>
           <div className="lgs-stage" data-glass-edge="" aria-hidden="true">
-            {/* The key makes every scene a fresh tree: the ink sampler only re-reads a pane when
-                the DOM has moved, and a recoloured tree in place would leave the samples wearing
-                the last scene's brightness — and with it the last scene's rainbow. */}
-            <div className="lgs-scene" data-scene={scene} data-glass-layer="" key={scene}>
-              <span className="lgs-shot" data-glass-layer="" />
-              <span className="lgs-mock" data-glass-layer=""><b>Liquid glass</b><i /><i /></span>
-              <span className="lgs-list" data-glass-layer=""><i /><i /><i /></span>
-            </div>
+            {/* The backdrop is a photograph, so the samples refract real detail — the fine grain
+                of the rocks, the snow line, the water — and the sampler reads the photo itself for
+                each sample's brightness, which is what scales its rainbow. */}
+            <img className="lgs-photo" src="/preview-lake.jpg" alt="" draggable={false} />
             <span className="lgs-sample lgs-pane" data-glass-edge="">Panel</span>
             <span className="lgs-sample lgs-card" data-glass-edge="">Card</span>
             <button className="lgs-sample lgs-button" data-glass-edge="" type="button" tabIndex={-1}>Button</button>

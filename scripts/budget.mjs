@@ -20,10 +20,10 @@ const LIMITS = {
   // now-playing baseline) plus ~1.9 kB gz for the lyrics feature's own file, which ships with
   // the now-playing/editor chunks and is only fetched when one of them is. The limit guards the
   // total, so it carries that feature's cost explicitly.
-  // 2026-10-02: 18.0 → 18.25 kB for the settings preview's DOM backdrop (three switchable scenes
-  // at different brightnesses, the rainbow's live stage). The split files were already at 17.9
-  // of the 18.0 ceiling before it; the scene itself was slimmed once and adds ~0.2 kB.
-  cssGz: 18_250,
+  // 2026-10-02: held at 18.0. The settings preview's mock scene briefly pushed the total to
+  // 18.1 and the ceiling to 18.25; the scene then became a photograph (one rule), which put the
+  // total back at 17.9 — so the 18.0 ceiling stands rather than keeping the raise.
+  cssGz: 18_000,
   largestChunkGz: 58_000, // the shared vendor chunk, measured 53.7 kB gz
 };
 

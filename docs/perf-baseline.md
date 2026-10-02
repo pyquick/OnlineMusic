@@ -73,7 +73,7 @@ biggest server-side win available, and it is measurable as request latency on `/
 | Metric | Budget | measured |
 | --- | --- | --- |
 | First Load JS on `/` | ≤ 135 kB gz (see `scripts/budget.mjs`) | 122.2 kB |
-| CSS (gz, all shipped files) | ≤ 18.25 kB | 18.1 kB after the 2026-10-02 settings preview scene (the split files were already at 17.9 of the 18.0 ceiling set on 2026-10-01: 16.9 kB from the globals.css split + the lyrics feature chunk, later the per-control settings UI) |
+| CSS (gz, all shipped files) | ≤ 18 kB | 17.9 kB after the 2026-10-02 settings preview backdrop became a photograph (the split files were already at 17.9 of the 18.0 ceiling set on 2026-10-01: 16.9 kB from the globals.css split + the lyrics feature chunk, later the per-control settings UI) |
 | Largest chunk (gz) | ≤ 58 kB | 53.7 kB |
 | Interaction (scroll / drag) p95 | ≤ 20 ms | 17.6 ms |
 | Long tasks | 0 over 50 ms during scroll, playback, or a slider drag | 0 |

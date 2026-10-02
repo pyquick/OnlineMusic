@@ -314,21 +314,12 @@ export function startInkSampler(): () => void {
    * scene as a photograph is.
    */
   const SURFACES = ".panel,.hero-panel,.asset-card,.project-card,.album-card,.album-detail,.track-row,.settings-card,.parameter-card,.upload-modal,.auth-modal,.dropzone,.empty-assets";
-  /**
-   * A painted layer that may sit *inside* another pane and still be what a pane's glass shows:
-   * the Settings preview's scene, which is real DOM content standing in for the page behind the
-   * preview samples. An ordinary surface inside a pane is skipped — a pane's own paint must not
-   * count as the scene behind it — but a marked layer is content, and the panes above it read it
-   * as their backdrop, so a sample over the scene's dark side disperses less than one over its
-   * lit side.
-   */
-  const LAYERS = "[data-glass-layer]";
 
   /** Every surface's box, brightness and opacity, read once a tick for every pane to share. */
   function surfacesUnder(layer: HTMLElement | null): Layer[] {
     const found: Layer[] = [];
-    for (const element of Array.from(document.querySelectorAll<HTMLElement>(`${SURFACES},${LAYERS}`))) {
-      if (element.closest("[data-glass-edge]") && !element.hasAttribute("data-glass-layer")) continue;
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>(SURFACES))) {
+      if (element.closest("[data-glass-edge]")) continue;
       if (element.closest(".video-overlay") !== layer) continue;
       const box = element.getBoundingClientRect();
       if (box.width < 8 || box.height < 8) continue;
