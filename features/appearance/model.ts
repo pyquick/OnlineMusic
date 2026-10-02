@@ -7,38 +7,12 @@
  * first-paint path (which restores a saved blob) without dragging the settings UI along.
  */
 
-/** Backdrop blur in px for every frosted pane, and the corner-radius multiplier behind it. */
-export const MAX_GLASS_BLUR = 30;
-export const DEFAULT_GLASS_BLUR = 12;
 /**
- * The blur the slider steps in, in px. The first pixel of blur is the one that matters — on a 2×
- * display a whole px is two device pixels, and the difference between none and that is the coarse
- * jump the dial used to have — so the dial is cut into tenths, and 0.1px is a haze you can barely
- * name rather than the switch that 1px was.
- */
-export const GLASS_BLUR_STEP = 0.1;
-export const DEFAULT_GLASS_RADIUS = 100;
-/** Clarity runs the other way: 100% is nearly clear glass, 0% is an opaque milky pane. */
-export const DEFAULT_GLASS_CLARITY = 60;
-/** How far the rim pulls the backdrop inward, in px. */
-export const DEFAULT_GLASS_EDGE = 9;
-/**
- * The master rainbow, 0–100: the share of the rim's bend each colour channel separates by, scaled
- * per pane by the measured brightness behind it. On by default — it is the one dial every control
- * answers to at once, and a fresh install should show what it does.
- */
-export const DEFAULT_GLASS_DISPERSION = 50;
-/** How far in from the edge the bend reaches, in px — the same band on every pane and edge. */
-export const DEFAULT_GLASS_REFRACTION = 30;
-/** Settings saved before the band became a width held a percent of the pane's short side. */
-export const BAND_PERCENT_TO_PX = 2.5;
-
-/**
- * Everything about how the studio looks that is not one of the five glass dials. One object, so
- * the store has one field to write and one to read back, and a saved blob from an older build
- * simply leaves the new members at their defaults. Tints are "r g b" channel strings rather than
- * hex: the stylesheet needs the channels separately, and this is the form the now-playing view
- * already uses for its artwork tint.
+ * Everything about how the studio looks that is not one of the glass dials (those live in
+ * features/glass). One object, so the store has one field to write and one to read back, and a
+ * saved blob from an older build simply leaves the new members at their defaults. Tints are
+ * "r g b" channel strings rather than hex: the stylesheet needs the channels separately, and this
+ * is the form the now-playing view already uses for its artwork tint.
  */
 export type Appearance = {
   tint: string;

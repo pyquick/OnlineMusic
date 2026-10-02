@@ -44,14 +44,13 @@ import {
   X,
 } from "lucide-react";
 import { readEmbeddedTags } from "@/lib/embedded-tags";
-import { attachGlassEdge, MAX_EDGE_OFFSET, MAX_BAND_PX, type GlassGroupValues } from "@/lib/glassEdge";
-import { attachGlassWebgl, type GlassWebglHandle } from "@/lib/glassWebgl";
-import { setAutoShade, startInkSampler, touchScene } from "@/lib/inkSampler";
 import { startAmbientDrift } from "@/lib/ambientDrift";
 import dynamic from "next/dynamic";
 import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyphs";
 import type { Asset, IndexEntry } from "@/shared/types/media";
-import { BAND_PERCENT_TO_PX, DEFAULT_APPEARANCE, DEFAULT_GLASS_BLUR, DEFAULT_GLASS_CLARITY, DEFAULT_GLASS_DISPERSION, DEFAULT_GLASS_EDGE, DEFAULT_GLASS_RADIUS, DEFAULT_GLASS_REFRACTION, GRADIENT_PRESETS, MAX_GLASS_BLUR, SOLID_PRESETS, tintChannels, type Appearance } from "@/features/appearance";
+import { DEFAULT_APPEARANCE, GRADIENT_PRESETS, SOLID_PRESETS, tintChannels, type Appearance } from "@/features/appearance";
+import { useGlassSystem } from "@/features/glass/useGlassSystem";
+import { SETTINGS_STORAGE_KEY } from "@/shared/utilities/settings";
 import { RangeControl } from "@/design-system/components/RangeControl";
 import { coverSrc } from "@/shared/utilities/media";
 import { emptyLyricsDoc, parseLyrics, type LyricsDoc } from "@/shared/lyrics";
@@ -270,6 +269,8 @@ function useCompact() {
   return compact;
 }
 
+/** The playback and appearance fields of the stored blob; the glass dials are the glass system's
+    own slice, read and written by features/glass through the same key. */
 type StoredSettings = {
   gain: number;
   rate: number;
@@ -277,36 +278,8 @@ type StoredSettings = {
   eq: number;
   fadeIn: number;
   fadeOut: number;
-  glassBlur: number;
-  glassRadius: number;
-  glassClarity: number;
-  glassEdge: number;
-  glassRefraction: number;
-  /** The master rainbow, 0–100. */
-  glassDispersion: number;
-  /** Per-family refraction overrides; a family absent here follows the two sliders. */
-  glassGroups: GlassGroupValues;
   appearance: Appearance;
 };
-
-/** The known families, so a stored blob cannot invent one; each value is clamped like the sliders. */
-const GLASS_GROUP_NAMES = ["pane", "card", "button", "field", "chip", "capsule", "tile"] as const;
-function readStoredGroups(raw: unknown): GlassGroupValues {
-  if (!raw || typeof raw !== "object") return {};
-  const out: GlassGroupValues = {};
-  for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (!(GLASS_GROUP_NAMES as readonly string[]).includes(name)) continue;
-    const entry = value as { band?: unknown; pull?: unknown } | null;
-    const band = Number(entry?.band);
-    const pull = Number(entry?.pull);
-    if (!Number.isFinite(band) || !Number.isFinite(pull)) continue;
-    out[name as (typeof GLASS_GROUP_NAMES)[number]] = {
-      band: Math.round(Math.max(0, Math.min(MAX_BAND_PX, band))),
-      pull: Math.max(0, Math.min(MAX_EDGE_OFFSET, pull)),
-    };
-  }
-  return out;
-}
 
 function readStoredSettings(): StoredSettings {
   const defaults: StoredSettings = {
@@ -316,25 +289,13 @@ function readStoredSettings(): StoredSettings {
     eq: 0,
     fadeIn: 0,
     fadeOut: 0,
-    glassBlur: DEFAULT_GLASS_BLUR,
-    glassRadius: DEFAULT_GLASS_RADIUS,
-    glassClarity: DEFAULT_GLASS_CLARITY,
-    glassEdge: DEFAULT_GLASS_EDGE,
-    glassRefraction: DEFAULT_GLASS_REFRACTION,
-    glassDispersion: DEFAULT_GLASS_DISPERSION,
-    glassGroups: {},
     appearance: DEFAULT_APPEARANCE,
   };
   if (typeof window === "undefined") return defaults;
-  const stored = window.localStorage.getItem("onlinemusic-settings");
+  const stored = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
   if (!stored) return defaults;
   try {
-    const data = JSON.parse(stored) as Partial<StoredSettings> & { glassBandPx?: number; glassRefraction?: number; appearance?: Partial<Appearance> };
-    const bandPx = typeof data.glassBandPx === "number"
-      ? data.glassBandPx
-      : typeof data.glassRefraction === "number"
-        ? data.glassRefraction * BAND_PERCENT_TO_PX
-        : defaults.glassRefraction;
+    const data = JSON.parse(stored) as Partial<StoredSettings> & { appearance?: Partial<Appearance> };
     return {
       gain: typeof data.gain === "number" ? data.gain : defaults.gain,
       rate: typeof data.rate === "number" ? data.rate : defaults.rate,
@@ -342,13 +303,6 @@ function readStoredSettings(): StoredSettings {
       eq: typeof data.eq === "number" ? data.eq : defaults.eq,
       fadeIn: typeof data.fadeIn === "number" ? data.fadeIn : defaults.fadeIn,
       fadeOut: typeof data.fadeOut === "number" ? data.fadeOut : defaults.fadeOut,
-      glassBlur: typeof data.glassBlur === "number" ? Math.max(0, Math.min(MAX_GLASS_BLUR, data.glassBlur)) : defaults.glassBlur,
-      glassRadius: typeof data.glassRadius === "number" ? Math.max(50, Math.min(150, data.glassRadius)) : defaults.glassRadius,
-      glassClarity: typeof data.glassClarity === "number" ? Math.max(0, Math.min(100, data.glassClarity)) : defaults.glassClarity,
-      glassEdge: typeof data.glassEdge === "number" ? Math.max(0, Math.min(MAX_EDGE_OFFSET, data.glassEdge)) : defaults.glassEdge,
-      glassRefraction: Math.round(Math.max(0, Math.min(MAX_BAND_PX, bandPx))),
-      glassDispersion: typeof data.glassDispersion === "number" ? Math.round(Math.max(0, Math.min(100, data.glassDispersion))) : defaults.glassDispersion,
-      glassGroups: readStoredGroups(data.glassGroups),
       appearance: data.appearance ? { ...DEFAULT_APPEARANCE, ...data.appearance } : defaults.appearance,
     };
   } catch {
@@ -428,17 +382,6 @@ export default function Home() {
   /** The artwork's colour, as "r g b", for the now-playing backdrop. Empty when there is no cover. */
   const [nowTint, setNowTint] = useState("");
   const [mediaError, setMediaError] = useState("");
-  /** Frosted material, live-tuned from Settings: backdrop blur in px and a corner-radius multiplier. */
-  const [glassBlur, setGlassBlur] = useState(DEFAULT_GLASS_BLUR);
-  const [glassRadius, setGlassRadius] = useState(DEFAULT_GLASS_RADIUS);
-  /** How see-through the pane is (100 = nearly clear) and how hard the rim bends the backdrop. */
-  const [glassClarity, setGlassClarity] = useState(DEFAULT_GLASS_CLARITY);
-  const [glassEdge, setGlassEdge] = useState(DEFAULT_GLASS_EDGE);
-  const [glassRefraction, setGlassRefraction] = useState(DEFAULT_GLASS_REFRACTION);
-  /** The master rainbow, 0–100: every rim's channel split, scaled per pane by its backdrop's light. */
-  const [glassDispersion, setGlassDispersion] = useState(DEFAULT_GLASS_DISPERSION);
-  /** Per-family band/pull overrides for the rims (Settings · Liquid glass · per control). */
-  const [glassGroups, setGlassGroups] = useState<GlassGroupValues>({});
   /** The tint the glass lays down, and the backdrop it sits on. Saved with everything else. */
   const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
   const compact = useCompact();
@@ -447,9 +390,10 @@ export default function Home() {
   /** False until the stored preferences have been applied, so a mount write cannot clobber them. */
   const [settingsReady, setSettingsReady] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
-  const glassEdgeRef = useRef<ReturnType<typeof attachGlassEdge> | null>(null);
-  /** The WebGL rim, where the engine needs it; null while the SVG map has the job. */
-  const glassWebglRef = useRef<GlassWebglHandle | null>(null);
+  /** The Liquid Glass system: the dials, their storage, and every engine that turns them into
+      pixels. Functional code touches the glass through this handle and the declarative DOM
+      markers, never through the engines directly. */
+  const glass = useGlassSystem(shellRef, appearance);
   /** The level the fullscreen speaker comes back to when it is unmuted; 72 is the dial's own default. */
   const lastGainRef = useRef(gain || 72);
   const prefetchedRef = useRef<Set<string>>(new Set());
@@ -480,23 +424,18 @@ export default function Home() {
     setEq(current.eq);
     setFadeIn(current.fadeIn);
     setFadeOut(current.fadeOut);
-    setGlassBlur(current.glassBlur);
-    setGlassRadius(current.glassRadius);
-    setGlassClarity(current.glassClarity);
-    setGlassEdge(current.glassEdge);
-    setGlassRefraction(current.glassRefraction);
-    setGlassDispersion(current.glassDispersion);
-    setGlassGroups(current.glassGroups);
     setAppearance(current.appearance);
     setSettingsReady(true);
   }, []);
 
   useEffect(() => {
-    // Waiting for the restore keeps the first write from overwriting stored values with defaults
-    // (StrictMode runs these effects twice, so the order matters even on a single mount).
-    if (!settingsReady) return;
-    window.localStorage.setItem("onlinemusic-settings", JSON.stringify({ gain, rate, volume, eq, fadeIn, fadeOut, glassBlur, glassRadius, glassClarity, glassEdge, glassBandPx: glassRefraction, glassDispersion, glassGroups, appearance }));
-  }, [settingsReady, gain, rate, volume, eq, fadeIn, fadeOut, glassBlur, glassRadius, glassClarity, glassEdge, glassRefraction, glassDispersion, appearance]);
+    // Waiting for both restores keeps the first write from overwriting stored values with defaults
+    // (StrictMode runs these effects twice, so the order matters even on a single mount). The
+    // glass slice rides along as an opaque patch, so this file never names its fields — which is
+    // also why `glass.stored` is in the deps: a family override alone must still be saved.
+    if (!settingsReady || !glass.ready) return;
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ gain, rate, volume, eq, fadeIn, fadeOut, ...glass.stored, appearance }));
+  }, [settingsReady, glass.ready, glass.stored, gain, rate, volume, eq, fadeIn, fadeOut, appearance]);
 
   /**
    * Every screen keeps the place it was scrolled to, like a tab. The studio scrolls the window,
@@ -520,8 +459,6 @@ export default function Home() {
     window.scrollTo({ top: scrollByView.current[view] ?? 0 });
   }, [view]);
 
-  useEffect(() => { setAutoShade(appearance.shade); touchScene(); }, [appearance]);
-
   // Starting a track gets a slow swell on the play glyph; pausing just swaps the icon.
   useEffect(() => {
     if (playing && !wasPlaying.current) {
@@ -533,44 +470,8 @@ export default function Home() {
     wasPlaying.current = playing;
   }, [playing]);
 
-  useEffect(() => {
-    const shell = shellRef.current;
-    if (!shell) return;
-    // The rim bend is SVG in Chromium and WebGL where CSS cannot bend a backdrop at all (Safari;
-    // Chromium too from a development build with ?glasswebgl=1, which is how the two are
-    // compared). A WebGL build that cannot start falls through to the SVG path, and thence to the
-    // shaded rim, so the panes are never left without something at their edges.
-    const webgl = attachGlassWebgl(shell, { blur: glassBlur, clarity: glassClarity / 100, offset: glassEdge, band: glassRefraction, radius: glassRadius / 100, dispersion: glassDispersion / 100 });
-    if (webgl) {
-      glassWebglRef.current = webgl;
-      return () => { webgl.destroy(); glassWebglRef.current = null; };
-    }
-    const edge = attachGlassEdge(shell);
-    glassEdgeRef.current = edge;
-    return () => { edge.destroy(); glassEdgeRef.current = null; };
-    // Mount only: the sliders are pushed in below, and re-attaching would throw the raster away.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => startInkSampler(), []);
   // The ambient drift is stepped, not animated: see lib/ambientDrift.ts for what the frames cost.
   useEffect(() => startAmbientDrift(), []);
-  // The five sliders, pushed live: the band re-draws from the raster it already has — and re-reads
-  // the veil clarity just rewrote — so moving one never costs a rasterisation. The tint rides
-  // along because the band carries it too, and a colour the flat middle has already changed to
-  // must not wait on the next slider move to reach the rim.
-  useEffect(() => {
-    glassWebglRef.current?.setParameters({ blur: glassBlur, clarity: glassClarity / 100, offset: glassEdge, band: glassRefraction, radius: glassRadius / 100, dispersion: glassDispersion / 100 });
-  }, [glassBlur, glassClarity, glassEdge, glassRefraction, glassDispersion, glassRadius, appearance.tint]);
-  useEffect(() => { glassEdgeRef.current?.setOffset(glassEdge); }, [glassEdge]);
-  // The per-family bases. Absent families follow the sliders, so only the overrides travel.
-  useEffect(() => {
-    glassWebglRef.current?.setGroups(glassGroups);
-    glassEdgeRef.current?.setGroups(glassGroups);
-  }, [glassGroups]);
-  useEffect(() => { glassEdgeRef.current?.setRefraction(glassRefraction); }, [glassRefraction]);
-  // The master rainbow reaches both engines: the WebGL one above, the SVG map here.
-  useEffect(() => { glassEdgeRef.current?.setDispersion(glassDispersion / 100); }, [glassDispersion]);
 
   /** Reads the newline-delimited index and appends each list entry as soon as its line arrives. */
   async function loadRemoteAssets() {
@@ -1142,7 +1043,7 @@ export default function Home() {
   }
 
   return (
-    <div ref={shellRef} className="studio-shell" data-bg={appearance.bgKind} data-theme={appearance.shellLuma < 0.5 ? "dark" : "light"} data-bubble={bubbleRaised ? "" : undefined} style={{ ...appearanceStyle, "--glass-radius": String(glassRadius / 100), "--glass-blur": `${glassBlur}px`, "--glass-clarity": String(glassClarity / 100), "--glass-band": `${glassRefraction}px`, "--glass-pull": String(glassEdge) } as CSSProperties}>
+    <div ref={shellRef} className="studio-shell" data-bg={appearance.bgKind} data-theme={appearance.shellLuma < 0.5 ? "dark" : "light"} data-bubble={bubbleRaised ? "" : undefined} style={{ ...appearanceStyle, ...glass.style }}>
       {/* The backdrop: fixed, so it holds still under a scrolling page, and a real element, so the
           WebGL raster carries it. Everything else paints above it by document order. */}
       <div className="shell-bg" data-raster-fill aria-hidden="true" />
@@ -1157,7 +1058,7 @@ export default function Home() {
       <section className="content-area">
         <header className="topbar" data-glass-edge={compact ? undefined : ""} data-glass-scene="moving-page"><button className="menu-button" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle menu"><Menu size={20} /></button><div className="breadcrumbs"><span>{viewTitles[view]}</span><ChevronDown size={14} /><strong>{view === "studio" ? "Media workspace" : view === "settings" ? "Glass, colour and background" : "Your collection"}</strong></div><div className="top-actions">{searchOpen && <input className="search-input" data-glass-edge="" autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your music" />}<button className="icon-button" onClick={() => setSearchOpen((open) => !open)} aria-label="Search"><Search size={18} /></button><button className="icon-button" onClick={() => alert("Help center is available from your workspace.")} aria-label="Help"><CircleHelp size={18} /></button><button className="top-avatar top-avatar-button" onClick={() => setAuthOpen(true)}>{user?.name?.slice(0,2).toUpperCase() || "JL"}</button></div></header>
         <div className="page-content">
-          {view === "settings" ? <AppearanceSettings blur={glassBlur} onBlur={setGlassBlur} clarity={glassClarity} onClarity={setGlassClarity} edge={glassEdge} onEdge={setGlassEdge} refraction={glassRefraction} onRefraction={setGlassRefraction} dispersion={glassDispersion} onDispersion={setGlassDispersion} radius={glassRadius} onRadius={setGlassRadius} appearance={appearance} onAppearance={(patch) => setAppearance((current) => ({ ...current, ...patch }))} groups={glassGroups} onGroups={setGlassGroups} onClose={() => goTo("studio")} /> : view === "albums" ? <section className="collection-view"><div className="collection-heading"><h1>Albums</h1><button className="primary-button" onClick={openImport}><Plus size={17} /> Import media</button></div>{albums.length === 0 && <div className="project-grid"><div className="empty-assets" data-glass-edge="">No albums yet. Import songs that carry an album tag to build your collection.</div></div>}<div className="album-grid">{albums.map((entry) => { const key = entry.album.toLowerCase(); const cover = albumCover(entry.items); const expanded = expandedAlbum === key; return <button className={`album-card ${expanded ? "is-expanded" : ""}`} data-glass-edge="" key={key} onClick={() => setExpandedAlbum(expanded ? null : key)}><span className="album-card-art">{cover ? <img src={String(cover)} alt="" /> : <Disc3 size={26} />}</span><strong>{entry.album}</strong><small>{albumArtist(entry.items) || "Unknown artist"} · {entry.items.length} {entry.items.length === 1 ? "track" : "tracks"}</small></button>; })}</div>{albums.filter((entry) => entry.album.toLowerCase() === expandedAlbum).map((entry) => { const cover = albumCover(entry.items); return <section className="album-detail" data-glass-edge="" key={entry.album.toLowerCase()}><header className="album-detail-head"><span className="album-cover">{cover ? <img src={String(cover)} alt="" /> : <Disc3 size={18} />}</span><div><strong>{entry.album}</strong><small>{albumArtist(entry.items) || "Unknown artist"} · {entry.items.length} {entry.items.length === 1 ? "track" : "tracks"}</small></div><button className="primary-button" onClick={() => playAlbum(entry.items, 0)}><Play size={15} /> Play all</button><button className="icon-button" onClick={() => setExpandedAlbum(null)} aria-label="Collapse album"><X size={17} /></button></header><div className="track-list">{entry.items.map((item, index) => <button className={`track-row ${asset?.file.name === item.file.name ? "is-current" : ""}`} key={item.file.name} onClick={() => playAlbum(entry.items, index)} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}><span className="track-no">{trackLabel(item, index)}</span><span className="track-title">{item.title || item.file.name}</span><small>{formatBytes(assetSize(item))}</small></button>)}</div></section>; })}<button className="back-link" onClick={() => goTo("studio")}><ArrowLeft size={16} /> Back to studio</button></section> : view !== "studio" ? <section className="collection-view"><div className="collection-heading"><h1>{view === "projects" ? "My Projects" : "Media Library"}</h1><button className="primary-button" onClick={openImport}><Plus size={17} /> New project</button></div>{listedAssets.length === 0 && <div className="project-grid"><div className="empty-assets" data-glass-edge="">No saved media yet. Import a file to create your first project.</div></div>}{albumGroups.map((group) => { const cover = albumCover(group.items); return <section className="album-group" key={group.album.toLowerCase()}><header className="album-heading"><span className="album-cover">{cover ? <img src={String(cover)} alt="" /> : <Disc3 size={18} />}</span><div><strong>{group.album}</strong><small>{group.items.length} {group.items.length === 1 ? "track" : "tracks"}</small></div></header><div className="project-grid">{group.items.map(renderProjectCard)}</div></section>; })}{looseAssets.length > 0 && <div className="project-grid">{looseAssets.map(renderProjectCard)}</div>}<button className="back-link" onClick={() => goTo("studio")}><ArrowLeft size={16} /> Back to studio</button></section> : <>
+          {view === "settings" ? <AppearanceSettings glass={glass.settings} onGlass={glass.update} appearance={appearance} onAppearance={(patch) => setAppearance((current) => ({ ...current, ...patch }))} onClose={() => goTo("studio")} /> : view === "albums" ? <section className="collection-view"><div className="collection-heading"><h1>Albums</h1><button className="primary-button" onClick={openImport}><Plus size={17} /> Import media</button></div>{albums.length === 0 && <div className="project-grid"><div className="empty-assets" data-glass-edge="">No albums yet. Import songs that carry an album tag to build your collection.</div></div>}<div className="album-grid">{albums.map((entry) => { const key = entry.album.toLowerCase(); const cover = albumCover(entry.items); const expanded = expandedAlbum === key; return <button className={`album-card ${expanded ? "is-expanded" : ""}`} data-glass-edge="" key={key} onClick={() => setExpandedAlbum(expanded ? null : key)}><span className="album-card-art">{cover ? <img src={String(cover)} alt="" /> : <Disc3 size={26} />}</span><strong>{entry.album}</strong><small>{albumArtist(entry.items) || "Unknown artist"} · {entry.items.length} {entry.items.length === 1 ? "track" : "tracks"}</small></button>; })}</div>{albums.filter((entry) => entry.album.toLowerCase() === expandedAlbum).map((entry) => { const cover = albumCover(entry.items); return <section className="album-detail" data-glass-edge="" key={entry.album.toLowerCase()}><header className="album-detail-head"><span className="album-cover">{cover ? <img src={String(cover)} alt="" /> : <Disc3 size={18} />}</span><div><strong>{entry.album}</strong><small>{albumArtist(entry.items) || "Unknown artist"} · {entry.items.length} {entry.items.length === 1 ? "track" : "tracks"}</small></div><button className="primary-button" onClick={() => playAlbum(entry.items, 0)}><Play size={15} /> Play all</button><button className="icon-button" onClick={() => setExpandedAlbum(null)} aria-label="Collapse album"><X size={17} /></button></header><div className="track-list">{entry.items.map((item, index) => <button className={`track-row ${asset?.file.name === item.file.name ? "is-current" : ""}`} key={item.file.name} onClick={() => playAlbum(entry.items, index)} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}><span className="track-no">{trackLabel(item, index)}</span><span className="track-title">{item.title || item.file.name}</span><small>{formatBytes(assetSize(item))}</small></button>)}</div></section>; })}<button className="back-link" onClick={() => goTo("studio")}><ArrowLeft size={16} /> Back to studio</button></section> : view !== "studio" ? <section className="collection-view"><div className="collection-heading"><h1>{view === "projects" ? "My Projects" : "Media Library"}</h1><button className="primary-button" onClick={openImport}><Plus size={17} /> New project</button></div>{listedAssets.length === 0 && <div className="project-grid"><div className="empty-assets" data-glass-edge="">No saved media yet. Import a file to create your first project.</div></div>}{albumGroups.map((group) => { const cover = albumCover(group.items); return <section className="album-group" key={group.album.toLowerCase()}><header className="album-heading"><span className="album-cover">{cover ? <img src={String(cover)} alt="" /> : <Disc3 size={18} />}</span><div><strong>{group.album}</strong><small>{group.items.length} {group.items.length === 1 ? "track" : "tracks"}</small></div></header><div className="project-grid">{group.items.map(renderProjectCard)}</div></section>; })}{looseAssets.length > 0 && <div className="project-grid">{looseAssets.map(renderProjectCard)}</div>}<button className="back-link" onClick={() => goTo("studio")}><ArrowLeft size={16} /> Back to studio</button></section> : <>
           <div className="welcome-row"><h1>Your media studio <span>✦</span></h1><div className="welcome-actions"><button className="ghost-button" data-glass-edge="" onClick={openImport}><Upload size={16} /> Import audio</button><button className="primary-button" onClick={openImport}><Plus size={17} /> New project</button></div></div>
           <div className="section-heading asset-heading"><h2>Your assets</h2><div className="asset-tools"><span className="asset-count">{assets.length} assets</span>{queue.length > 0 && <span className="asset-count">{queue.length} queued</span>}<button className="small-action" data-glass-edge="" onClick={openImport}><Plus size={14} /> Add</button></div></div>
           <div className="asset-strip">{assets.slice(0, 4).map((item) => <button className={`asset-card ${asset?.file.name === item.file.name ? "selected-asset" : ""}`} data-glass-edge="" key={item.file.name} onClick={() => { setPlaying(false); setAsset(item); }} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}><span className="asset-thumb imported">{asset?.file.name === item.file.name ? <Check size={18} /> : item.kind === "video" ? <FileVideo size={19} /> : <FileAudio size={19} />}</span><span className="asset-text"><strong>{item.title || item.file.name}</strong><small>{formatBytes(assetSize(item))} · {item.kind}</small></span></button>)}{assets.length === 0 && <div className="empty-assets" data-glass-edge="">No local media yet. Import a file to begin.</div>}</div>
@@ -1256,7 +1157,7 @@ export default function Home() {
 
       {projectsOpen && <aside className="glass-panel projects-panel" data-glass-edge="" data-glass-scene="moving-page" aria-label="Projects"><header className="glass-panel-head"><div><p className="eyebrow">Projects</p><h3>{assets.length} item{assets.length === 1 ? "" : "s"}{queue.length > 0 ? ` · ${queue.length} queued` : ""}</h3></div><button className="icon-button" onClick={() => setProjectsOpen(false)} aria-label="Close projects"><X size={16} /></button></header><div className="project-list">{queue.length > 0 && <section className="project-list-group"><p className="eyebrow">Queue</p>{queue.map((name) => <span className="project-list-row is-queued" key={`queued-${name}`}><ListMusic size={14} /><span className="project-list-name">{name}</span></span>)}</section>}<section className="project-list-group"><p className="eyebrow">Media</p>{assets.map((item) => <button className={`project-list-row ${asset?.file.name === item.file.name ? "is-current" : ""}`} key={item.file.name} onClick={() => { void playAsset(item); }} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}>{item.kind === "video" ? <FileVideo size={14} /> : item.kind === "audio" ? <Music2 size={14} /> : <Layers3 size={14} />}<span className="project-list-name">{item.title || item.file.name}</span><small>{formatBytes(assetSize(item))}</small></button>)}{assets.length === 0 && <p className="glass-empty">Nothing imported yet.</p>}</section></div></aside>}
 
-      {compact && !videoOverlay && <BottomPill items={pillItems} current={view} onSelect={(id) => goTo(id as View)} onRaiseChange={setBubbleRaised} onBubbleMove={() => glassWebglRef.current?.refresh()} />}
+      {compact && !videoOverlay && <BottomPill items={pillItems} current={view} onSelect={(id) => goTo(id as View)} onRaiseChange={setBubbleRaised} />}
 
       {!videoOverlay && <div className={`player glass-bar ${asset?.kind === "audio" && playing ? "audio-playing" : ""}`} data-glass-edge="" data-glass-scene="fixed-shell"><div className="now-playing"><button className="mini-cover-button" onClick={() => setNowOpen(true)} aria-label="Open now playing" title="Now playing"><span className={`mini-cover ${playing && asset?.kind === "audio" ? "is-playing" : ""}`}>{barCover ? <img src={barCover} alt="" /> : asset?.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="mini-cover-expand" aria-hidden="true"><Maximize2 size={13} /></span></span></button><div className="now-playing-copy"><strong className={asset && (asset.title || asset.file.name).length > 28 ? "is-long-title" : ""}><span>{asset?.title || "No asset selected"}</span></strong><small className={mediaError ? "is-error" : ""}>{mediaError || (asset ? `${asset.kind} · local preview` : "Import something to begin")}</small></div></div><div className="player-controls">{canStep && <button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={() => setShuffleOn((on) => !on)} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={15} /></button>}<button className="icon-button transport-step" onClick={() => playTrack(-1)} disabled={!canStep} aria-label="Previous song" title="Previous"><SkipBack size={16} fill="currentColor" /></button><button className={`player-button ${playStarting ? "is-starting" : ""}`} onClick={togglePlayback} aria-label={playing ? "Pause" : "Play"} disabled={!asset || asset.kind !== "audio"}>{playing ? <PauseGlyph size={26} /> : <PlayGlyph size={26} />}</button><button className="icon-button transport-step" onClick={() => playTrack(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={16} fill="currentColor" /></button>{canStep && <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={() => setLoopOn((on) => !on)} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={15} /></button>}<SeekBar media={audioRef} /></div><div className={`player-actions bar-cluster ${volumeOpen ? "is-volume-open" : ""}`}><button className={`glass-button bar-tool ${lyricsOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => { setLyricsOpen((open) => !open); setProjectsOpen(false); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button><button className={`glass-button bar-tool ${projectsOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => { setProjectsOpen((open) => !open); setLyricsOpen(false); }} aria-label="Projects" title="Projects"><List size={17} /></button><div className={`volume-cluster ${volumeOpen ? "is-open" : ""}`}><span className="volume-slider"><input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} tabIndex={volumeOpen ? 0 : -1} aria-hidden={!volumeOpen} onChange={(event) => setGain(Number(event.target.value))} aria-label="Volume" /></span><button className={`glass-button ${volumeOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => setVolumeOpen((open) => !open)} aria-label="Volume" title="Volume">{gain === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div></div></div>}
 

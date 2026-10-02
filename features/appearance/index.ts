@@ -7,10 +7,11 @@
  * (`./AppearanceSettings`, loaded with `next/dynamic`). Keeping the two apart is load-bearing, not
  * stylistic: while this file also re-exported the view, importing a default from here pulled the
  * whole settings page — and its icons — into the first load, and the split saved nothing.
+ *
+ * The glass dials and their limits used to live in this feature too; they moved to features/glass,
+ * where the rest of the Liquid Glass system lives.
  */
 export {
-  BAND_PERCENT_TO_PX, DEFAULT_APPEARANCE, DEFAULT_GLASS_BLUR, DEFAULT_GLASS_CLARITY,
-  DEFAULT_GLASS_DISPERSION, DEFAULT_GLASS_EDGE, DEFAULT_GLASS_RADIUS, DEFAULT_GLASS_REFRACTION,
-  GLASS_BLUR_STEP, GRADIENT_PRESETS, MAX_GLASS_BLUR, SOLID_PRESETS, TINT_PRESETS,
+  DEFAULT_APPEARANCE, GRADIENT_PRESETS, SOLID_PRESETS, TINT_PRESETS,
   hexToRgb, hexLuma, prepareBackgroundImage, rgbToHex, tintChannels, type Appearance,
 } from "./model";

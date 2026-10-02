@@ -35,15 +35,19 @@ be said out loud rather than buried.
 
 ## Source size
 
+Refreshed 2026-10-02 (the glass-boundary change; the split stylesheets replaced `app/globals.css`
+on 2026-10-01 and `app/settings-view.tsx` left for `features/appearance` in P3.1):
+
 | File | Lines |
 | --- | --- |
-| `app/page.tsx` | 1,270 (was 1,322 before P0) |
-| `app/globals.css` | 741 |
-| `lib/glassWebgl.ts` | 1,141 |
-| `lib/inkSampler.ts` | 492 |
-| `lib/glassEdge.ts` | 428 |
-| `app/settings-view.tsx` | 268 |
-| `app/bottom-pill.tsx` | 240 |
+| `app/page.tsx` | 1,203 (1,344 before the glass system moved out) |
+| `features/glass/model.ts` / `useGlassSystem.ts` / `index.ts` | 133 / 139 / 17 |
+| `styles/shared.css` / `shell.css` / `now.css` | 590 / 150 / 192 |
+| `features/appearance/appearance.css` / `features/lyrics/lyrics.css` | 40 / 155 |
+| `lib/glassWebgl.ts` | 1,202 |
+| `lib/inkSampler.ts` | 578 |
+| `lib/glassEdge.ts` | 588 |
+| `app/bottom-pill.tsx` | 471 |
 
 ## Runtime (measured with the pixel/frame probes described in the glass notes)
 
@@ -72,8 +76,8 @@ biggest server-side win available, and it is measurable as request latency on `/
 
 | Metric | Budget | measured |
 | --- | --- | --- |
-| First Load JS on `/` | ≤ 135 kB gz (see `scripts/budget.mjs`) | 122.2 kB |
-| CSS (gz, all shipped files) | ≤ 18 kB | 17.9 kB after the 2026-10-02 settings preview backdrop became a photograph (the split files were already at 17.9 of the 18.0 ceiling set on 2026-10-01: 16.9 kB from the globals.css split + the lyrics feature chunk, later the per-control settings UI) |
+| First Load JS on `/` | ≤ 135 kB gz (see `scripts/budget.mjs`) | **131.4 kB** (2026-10-02, after the glass-boundary change). The rise from 122.2 (P3.3) came with the rainbow dispersion + settings preview work earlier on 2026-10-02, not with the boundary change: HEAD measured 131.5 kB gz in the same session |
+| CSS (gz, all shipped files) | ≤ 18 kB | **18.0 kB** — at the ceiling (the settings preview photo and per-control UI brought it here; the boundary change touched no CSS) |
 | Largest chunk (gz) | ≤ 58 kB | 53.7 kB |
 | Interaction (scroll / drag) p95 | ≤ 20 ms | 17.6 ms |
 | Long tasks | 0 over 50 ms during scroll, playback, or a slider drag | 0 |
@@ -97,6 +101,7 @@ motion or the shell changes.
 | P4 | the playback clock left the page's state for `features/player` (`useMediaClock`, `SeekBar`, `WaveformTrack`); the listings memoised | **during 8 s of playback, React's scheduler time fell from 87.1 ms to 38.1 ms (−56 %)**, and the page-state writer (`updateTime`, 27 calls) disappeared entirely; the clock now writes 64 × locally (`syncTime`). Studio + editor, 604 element-lines = 0 differing values; transport text, wave times and the wave's `aria-valuenow` all identical |
 | P5 | `infrastructure/api/client.ts` is the only way out to the API; `POST /api/assets` validates before it writes | three malformed uploads (260-char name, unknown `mediaKind`, 80 tags) answered 201 before and 400 after, while `.wav`/`.opus` still upload; then import → edit title → sign out → wrong password → sign in, all through the client |
 | P4.2 | the now-playing view became `features/now-playing` and took its own UI state with it (panel, drawer, gesture, lyric focus, the phone's measuring pass) | desktop whole document: 470 / 440 / 368 elements identical; compact inside `.now-view`: 54 elements, identical structure and **0 differing property values** in both the resting and swiped states, with `--now-reveal`, `--now-lift`, `--now-upper-top/bottom` and every `--lyric-focus` identical. Re-verified live on the deployed container: lyrics tab opens the drawer, the queue tab returns, close unmounts |
+| Glass boundary (2026-10-02) | the Liquid Glass system moved to `features/glass` (dials, storage, WebGL/SVG attach, ink sampler, param pushes); functional code keeps only declarative DOM markers, and the pill's silent-move notification is a bubbling **`glass-refresh` DOM event**; `AppearanceSettings` imports the glass feature, not engine internals; the ink sampler takes its root and finds the overlay via `data-glass-layer="video"`; engines untouched; `glassGroups` added to the save deps (family overrides now persist — intended) | computed-style diff, same blob and viewport: studio **161** + settings **263** element-lines = **0 differing values**; blob byte-identical and stable over 2.5 s, key order unchanged; `{glassRefraction:12}` → 30px and `{glassBandPx:84, glassRefraction:1}` → 84px; Blur 12 → 12.3 pushed `--glass-blur` and `backdrop-filter` live, a Cards step rebuilt only the cards' maps (sidebar map hash unchanged); document listener registered on load; real pill tap = 28 events, real drag under `?glasswebgl=1` = 29, console clean; overlay rail reads shade 1.000 / glow 0.224 / ink 100% inside the marked layer; scroll median 16.7 / p95 17.6 / 0 over 20 ms; initial JS gz 131.4 vs HEAD's 131.5 |
 
 ## P6: the list, measured rather than assumed
 

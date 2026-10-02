@@ -27,8 +27,14 @@
 const SAMPLE_MS = 250;
 /** The studio's page, cards and chrome are paper-white: text over them sits on a light surface. */
 const PAGE_LUMA = 0.96;
-/** .video-overlay paints itself near-black, and its panes stand on it wherever the frame cannot. */
+/** The video overlay paints itself near-black, and its panes stand on it wherever the frame cannot. */
 const OVERLAY_LUMA = 0.03;
+/**
+ * How the video overlay is found. The attribute is the whole contract — the overlay root carries
+ * it (`data-glass-layer="video"`), so nothing here has to know the app's class names, and a pane
+ * inside it or above it belongs to the overlay's scene rather than the page's.
+ */
+const VIDEO_LAYER = "[data-glass-layer='video']";
 /**
  * The mix's ends, read on the *surface* the glyphs sit on — the pane's own white veil laid over
  * whatever is behind it, not the backdrop alone. The veil lifts everything: a mid-grey video under
@@ -179,7 +185,11 @@ function textRuns(pane: HTMLElement): HTMLElement[] {
   return runs;
 }
 
-export function startInkSampler(): () => void {
+/**
+ * Starts the sampler against the studio's shell. The root is handed in, so the engine never has
+ * to know the shell's class name; every pane is found by its `data-glass-edge` marker.
+ */
+export function startInkSampler(root: HTMLElement): () => void {
   const canvas = document.createElement("canvas");
   canvas.width = TILE;
   canvas.height = TILE;
@@ -288,7 +298,7 @@ export function startInkSampler(): () => void {
    * reads the same dark scene every pane of the overlay's own rail reads.
    */
   function layerOf(pane: HTMLElement, overlay: HTMLElement | null): HTMLElement | null {
-    const own = pane.closest<HTMLElement>(".video-overlay");
+    const own = pane.closest<HTMLElement>(VIDEO_LAYER);
     if (own || !overlay) return own;
     return Number(getComputedStyle(pane).zIndex) > Number(getComputedStyle(overlay).zIndex) ? overlay : null;
   }
@@ -302,8 +312,7 @@ export function startInkSampler(): () => void {
   let pageLuma = PAGE_LUMA;
 
   function readPageLuma() {
-    const shell = document.querySelector<HTMLElement>(".studio-shell");
-    const value = shell ? Number.parseFloat(getComputedStyle(shell).getPropertyValue("--shell-luma")) : Number.NaN;
+    const value = Number.parseFloat(getComputedStyle(root).getPropertyValue("--shell-luma"));
     pageLuma = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : PAGE_LUMA;
   }
 
@@ -320,7 +329,7 @@ export function startInkSampler(): () => void {
     const found: Layer[] = [];
     for (const element of Array.from(document.querySelectorAll<HTMLElement>(SURFACES))) {
       if (element.closest("[data-glass-edge]")) continue;
-      if (element.closest(".video-overlay") !== layer) continue;
+      if (element.closest(VIDEO_LAYER) !== layer) continue;
       const box = element.getBoundingClientRect();
       if (box.width < 8 || box.height < 8) continue;
       const match = /^rgba?\(([^)]+)\)$/.exec(getComputedStyle(element).backgroundColor);
@@ -344,7 +353,7 @@ export function startInkSampler(): () => void {
       if (element instanceof HTMLCanvasElement && element.classList.contains("glass-surface")) continue;
       // The overlay paints itself opaque over the page, so its panes never show the media behind
       // it — and the page's panes never show the overlay's.
-      if (element.closest(".video-overlay") !== layer) continue;
+      if (element.closest(VIDEO_LAYER) !== layer) continue;
       const box = element.getBoundingClientRect();
       if (box.width < 2 || box.height < 2) continue;
       const content = contentBox(element, box);
@@ -477,7 +486,7 @@ export function startInkSampler(): () => void {
     }
     readPageLuma();
     const viewport: Box = { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
-    const overlay = document.querySelector<HTMLElement>(".video-overlay");
+    const overlay = document.querySelector<HTMLElement>(VIDEO_LAYER);
     // Two scenes, each read once for every pane that belongs to it.
     const pageSurfaces = surfacesUnder(null);
     const overlaySurfaces = overlay ? surfacesUnder(overlay) : [];

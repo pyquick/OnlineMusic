@@ -68,6 +68,9 @@ export default function VideoOverlay({
   return (
     <div
       className={`video-overlay ${controlsVisible ? "video-controls-visible" : ""}`}
+      /* The layer marker the ink sampler reads: an overlay is a scene of its own, and its panes
+         (and the ones painting above it) are judged against it rather than against the page. */
+      data-glass-layer="video"
       onMouseMove={(event) => {
         const nearBottom = window.innerHeight - event.clientY < 150;
         if (nearBottom) keepVisible();

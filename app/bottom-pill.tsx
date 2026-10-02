@@ -10,8 +10,6 @@ type Props = {
   onSelect: (id: string) => void;
   /** True from the moment the bubble is raised until it settles: the player bar shrinks aside. */
   onRaiseChange?: (raised: boolean) => void;
-  /** Fires as the bubble moves, so a WebGL rim can redraw at its new box without re-rasterising. */
-  onBubbleMove?: () => void;
 };
 
 /** How long a press has to last before the glass bubble comes up under the finger. */
@@ -56,7 +54,7 @@ const STRETCH_MAX = 0.12;
  * change of place that lets the glass go: it swells into clear liquid glass, crosses, and
  * contracts onto its new item.
  */
-export default function BottomPill({ items, current, onSelect, onRaiseChange, onBubbleMove }: Props) {
+export default function BottomPill({ items, current, onSelect, onRaiseChange }: Props) {
   const pillRef = useRef<HTMLElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const drag = useRef<{
@@ -77,10 +75,16 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
   /** The current item for the listeners below: they outlive the render that made them. */
   const activeRef = useRef(active);
   activeRef.current = active;
-  /** The move callback too: it is written inline by the page, so a new one arrives every render. */
-  const moveRef = useRef(onBubbleMove);
-  moveRef.current = onBubbleMove;
   const bubbleRef = useRef<HTMLSpanElement>(null);
+
+  /**
+   * Tells the glass rims that the capsule's box moved silently. The event name is the whole
+   * contract — the glass system listens on the document and redraws the rims at the new box
+   * without re-rasterising; no handle or import crosses between this component and the effect.
+   */
+  function notifyGlass() {
+    bubbleRef.current?.dispatchEvent(new CustomEvent("glass-refresh", { bubbles: true }));
+  }
   /**
    * The capsule's own motion. `x` is where it is drawn and `target` where the gesture says it
    * should be; the space between them is crossed by a spring, so no press can ever teleport the
@@ -144,7 +148,7 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
     element.style.setProperty("--bubble-sy", (1 - stretch * 0.5).toFixed(4));
     if (Math.abs(state.x - state.notified) >= MOVE_EPSILON) {
       state.notified = state.x;
-      moveRef.current?.();
+      notifyGlass();
     }
   }
 
@@ -230,7 +234,7 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
     onRaiseChange?.(true);
     // The bubble has just changed both its size and its material; a rim drawn from the old ones
     // would not match the pane it belongs to.
-    onBubbleMove?.();
+    notifyGlass();
   }
 
   /**
@@ -268,7 +272,7 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
       travelling: instant ? false : current.travelling,
     }));
     // Settling back also restores the resting material, so the rim is told about that too.
-    moveRef.current?.();
+    notifyGlass();
   }
 
   // The capsule rests on the current item whenever no gesture is in flight: a pointer merely over
@@ -343,7 +347,7 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
       glide();
       setBubble((current) => ({ ...current, index: state.index, width: box.width, raised: false, dragging: false }));
     }
-    onBubbleMove?.();
+    notifyGlass();
   }
 
   /**

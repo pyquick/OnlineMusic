@@ -2,11 +2,11 @@
 
 import { useRef, useState } from "react";
 import { X } from "lucide-react";
-import { MAX_EDGE_OFFSET, MAX_BAND_PX, type GlassGroup, type GlassGroupValues } from "@/lib/glassEdge";
+import { GLASS_BLUR_STEP, MAX_BAND_PX, MAX_EDGE_OFFSET, MAX_GLASS_BLUR, type GlassGroup, type GlassSettings } from "@/features/glass";
 import { RangeControl } from "@/design-system/components/RangeControl";
 import "./appearance.css";
 import {
-  GRADIENT_PRESETS, GLASS_BLUR_STEP, MAX_GLASS_BLUR, SOLID_PRESETS, TINT_PRESETS,
+  GRADIENT_PRESETS, SOLID_PRESETS, TINT_PRESETS,
   hexToRgb, prepareBackgroundImage, rgbToHex, type Appearance,
 } from "./model";
 
@@ -24,22 +24,15 @@ const GLASS_FAMILIES: { id: GlassGroup; label: string }[] = [
 ];
 
 export type SettingsViewProps = {
-  blur: number; onBlur: (next: number) => void;
-  clarity: number; onClarity: (next: number) => void;
-  edge: number; onEdge: (next: number) => void;
-  refraction: number; onRefraction: (next: number) => void;
-  /** The master rainbow, 0–100: one dial for every family's channel split. */
-  dispersion: number; onDispersion: (next: number) => void;
-  radius: number; onRadius: (next: number) => void;
+  /** The live glass dials, owned by the glass system; this view only edits them. */
+  glass: GlassSettings;
+  onGlass: (patch: Partial<GlassSettings>) => void;
   appearance: Appearance;
   onAppearance: (patch: Partial<Appearance>) => void;
-  /** Per-family edge refraction; a family absent here follows the two global sliders. */
-  groups: GlassGroupValues;
-  onGroups: (next: GlassGroupValues) => void;
   onClose: () => void;
 };
 
-export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, edge, onEdge, refraction, onRefraction, dispersion, onDispersion, radius, onRadius, appearance, onAppearance, groups, onGroups, onClose }: SettingsViewProps) {
+export default function AppearanceSettings({ glass, onGlass, appearance, onAppearance, onClose }: SettingsViewProps) {
   const [imageError, setImageError] = useState("");
   const [busy, setBusy] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
@@ -117,9 +110,9 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
       <div className="settings-card panel" data-glass-edge="">
         <div className="panel-title"><h3>Liquid glass</h3></div>
         <div className="settings-page-body">
-          <RangeControl label="Blur" value={blur} min={0} max={MAX_GLASS_BLUR} step={GLASS_BLUR_STEP} display={`${blur}px`} onChange={onBlur} />
-          <RangeControl label="Clarity" value={clarity} min={0} max={100} display={`${clarity}%`} onChange={onClarity} />
-          <RangeControl label="Corner radius" value={radius} min={50} max={150} display={`${radius}%`} onChange={onRadius} />
+          <RangeControl label="Blur" value={glass.blur} min={0} max={MAX_GLASS_BLUR} step={GLASS_BLUR_STEP} display={`${glass.blur}px`} onChange={(next) => onGlass({ blur: next })} />
+          <RangeControl label="Clarity" value={glass.clarity} min={0} max={100} display={`${glass.clarity}%`} onChange={(next) => onGlass({ clarity: next })} />
+          <RangeControl label="Corner radius" value={glass.radius} min={50} max={150} display={`${glass.radius}%`} onChange={(next) => onGlass({ radius: next })} />
           <p className="settings-hint">Blur frosts what sits behind a pane and clarity is how much of it shows through; both apply live and are saved in this browser. Edge distortion and edge refraction now live per family, in the card below.</p>
         </div>
       </div>
@@ -127,7 +120,7 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
       <div className="settings-card panel" data-glass-edge="">
         <div className="panel-title"><h3>Liquid glass · per control</h3></div>
         <div className="settings-page-body">
-          <RangeControl label="Rainbow dispersion" value={dispersion} min={0} max={100} display={`${dispersion}%`} onChange={onDispersion} />
+          <RangeControl label="Rainbow dispersion" value={glass.dispersion} min={0} max={100} display={`${glass.dispersion}%`} onChange={(next) => onGlass({ dispersion: next })} />
           <p className="settings-hint">The master prism: one dial splits every rim&rsquo;s refraction into its colours, and each pane takes its own share from the measured brightness of what it covers — the brighter the place, the wider the rainbow. Below, every family carries its own edge distortion (how hard the rim bends the backdrop) and edge refraction (how far in the bend reaches); the preview controls sit on a real photograph and answer every slider at once.</p>
           <div className="lgs-stage" data-glass-edge="" aria-hidden="true">
             {/* The backdrop is a photograph, so the samples refract real detail — the fine grain
@@ -144,10 +137,10 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
           </div>
           <div className="lgs-rows">
             {GLASS_FAMILIES.map((family) => {
-              const own = groups[family.id];
-              const band = own?.band ?? refraction;
-              const pull = own?.pull ?? edge;
-              const set = (patch: { band?: number; pull?: number }) => onGroups({ ...groups, [family.id]: { band: patch.band ?? band, pull: patch.pull ?? pull } });
+              const own = glass.groups[family.id];
+              const band = own?.band ?? glass.refraction;
+              const pull = own?.pull ?? glass.edge;
+              const set = (patch: { band?: number; pull?: number }) => onGlass({ groups: { ...glass.groups, [family.id]: { band: patch.band ?? band, pull: patch.pull ?? pull } } });
               return (
                 <div className={`lgs-row ${own ? "is-own" : ""}`} key={family.id} data-sample={family.id}>
                   <span className="lgs-name">{family.label}</span>
