@@ -145,3 +145,11 @@
   .lxe-head .icon-button{min-width:40px;min-height:40px}
   .lxe-track{height:34px}
 }
+
+/* The editor's controls join the glass: the word chips and the time/field inputs are rimmed
+   surfaces now, so the per-control settings reach them like every other family. */
+:is(.lxe-chip,.lxe-time-input,.lxe-token-text,.lxe-offset input,.lxe-fields input){--glass-group:field;
+  background:color-mix(in srgb,var(--panel2) calc(var(--glass-alpha,1) * 100%),transparent);
+  -webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));
+  backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
+.lxe-chip{--glass-group:chip}

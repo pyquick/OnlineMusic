@@ -397,6 +397,22 @@
 .bar-cluster{gap:8px}
 /* Small frosted tiles on top of the bar's own frost: a lighter tint, a tighter blur, and the
    state fills applied straight to the button (the icon is in-flow content and always paints above). */
+/* The small controls wear the studio's glass too (2026-10-01): a translucent surface — an opaque
+   fill has nothing behind it for a rim to bend — and the engines' edge filter in their own
+   backdrop, at the chip's blur rather than the pane's, so a 30px button does not pay for a 12px
+   frost. Each family's name feeds the per-control settings in Appearance. */
+:is(.ghost-button,.small-action){--glass-group:button;
+  -webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));
+  backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
+:is(.ghost-button,.small-action){background:color-mix(in srgb,var(--panel) calc(var(--glass-alpha,1) * 100%),transparent)}
+:is(.toolbar-button,.queue-button,.queue-add,.cover-button,.project-menu-button){--glass-group:button;
+  background:color-mix(in srgb,var(--accent-soft) calc(var(--glass-alpha,1) * 100%),transparent);
+  -webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));
+  backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
+:is(.search-input,.metadata-panel input,.metadata-float input,.auth-form input){--glass-group:field;
+  background:color-mix(in srgb,var(--panel2) calc(var(--glass-alpha,1) * 100%),transparent);
+  -webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));
+  backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
 /* Which family each rim belongs to, for the per-control settings: both engines read
    `--glass-group` off the pane at creation. Panels carry none — an absent name follows the two
    global sliders. */

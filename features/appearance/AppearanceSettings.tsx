@@ -56,7 +56,7 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
     <section className="settings-page">
       <header className="settings-page-head">
         <h1>Appearance</h1>
-        <button className="ghost-button" onClick={onClose}><X size={16} /> Close</button>
+        <button className="ghost-button" data-glass-edge="" onClick={onClose}><X size={16} /> Close</button>
       </header>
 
       <div className="settings-card panel" data-glass-edge="">
@@ -100,8 +100,8 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
           {appearance.bgKind === "image" && (
             <>
               <div className="bg-image-row">
-                <button className="toolbar-button" onClick={() => imageInput.current?.click()} disabled={busy}>{busy ? "Preparing…" : appearance.bgImage ? "Replace image" : "Choose image"}</button>
-                {appearance.bgImage && <button className="toolbar-button" onClick={() => onAppearance({ bgImage: "", bgKind: "preset", shellLuma: SOLID_PRESETS.find((preset) => preset.id === appearance.bgPreset)?.luma ?? 0.96 })}>Remove</button>}
+                <button className="toolbar-button" data-glass-edge="" onClick={() => imageInput.current?.click()} disabled={busy}>{busy ? "Preparing…" : appearance.bgImage ? "Replace image" : "Choose image"}</button>
+                {appearance.bgImage && <button className="toolbar-button" data-glass-edge="" onClick={() => onAppearance({ bgImage: "", bgKind: "preset", shellLuma: SOLID_PRESETS.find((preset) => preset.id === appearance.bgPreset)?.luma ?? 0.96 })}>Remove</button>}
                 <input ref={imageInput} type="file" accept="image/*" hidden onChange={(event) => { void chooseBackgroundImage(event.target.files?.[0]); event.target.value = ""; }} />
               </div>
               {imageError && <p className="error-message">{imageError}</p>}

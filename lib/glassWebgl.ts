@@ -674,6 +674,10 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
     });
     found.forEach((element) => {
       if (panes.has(element)) return;
+      // A void element — an <input> — cannot host the surface canvas the WebGL path inserts, and
+      // the CSS it would need is set on the element itself; the SVG path (Chromium) handles it,
+      // and on Safari the field simply keeps its flat material rather than throwing mid-sync.
+      if (element instanceof HTMLInputElement) return;
       added = true;
       const canvas = document.createElement("canvas");
       canvas.setAttribute("aria-hidden", "true");

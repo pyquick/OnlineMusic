@@ -364,11 +364,11 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
   return (
     <section className="lxe" aria-label="Edit lyrics">
       <header className="lxe-head">
-        <button className="ghost-button" onClick={requestClose}><ArrowLeft size={15} /> Back</button>
+        <button className="ghost-button" data-glass-edge="" onClick={requestClose}><ArrowLeft size={15} /> Back</button>
         <div className="lxe-title"><h1>Edit lyrics</h1><p>{asset.title || asset.file.name}</p></div>
         <div className="lxe-actions">
-          <button className="icon-button" onClick={undo} disabled={historyRef.current.past.length === 0} aria-label="Undo" title="Undo (Cmd/Ctrl+Z)"><Undo2 size={16} /></button>
-          <button className="icon-button" onClick={redo} disabled={historyRef.current.future.length === 0} aria-label="Redo" title="Redo (Cmd/Ctrl+Shift+Z)"><Redo2 size={16} /></button>
+          <button className="icon-button" data-glass-edge="" onClick={undo} disabled={historyRef.current.past.length === 0} aria-label="Undo" title="Undo (Cmd/Ctrl+Z)"><Undo2 size={16} /></button>
+          <button className="icon-button" data-glass-edge="" onClick={redo} disabled={historyRef.current.future.length === 0} aria-label="Redo" title="Redo (Cmd/Ctrl+Shift+Z)"><Redo2 size={16} /></button>
           <button className="toolbar-button" onClick={() => importRef.current?.click()}><FileUp size={14} /> Import</button>
           <button className="toolbar-button" onClick={() => exportAs("json")} title="Export the full document, translations and tokens included"><Download size={14} /> Export JSON</button>
           <button className="toolbar-button" onClick={() => exportAs("lrc")} title="Export timed lines as LRC"><Download size={14} /> Export LRC</button>
@@ -397,7 +397,7 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
             </div>
             <RangeControl label="Speed" value={speed} min={0.3} max={2} step={0.05} display={`${speed.toFixed(2)}×`} onChange={setSpeed} />
             <div className="lxe-offset">
-              <label>Offset<input type="number" step="10" value={offsetMs} onChange={(event) => setOffsetMs(Number(event.target.value) || 0)} />ms</label>
+              <label>Offset<input type="number" data-glass-edge="" step="10" value={offsetMs} onChange={(event) => setOffsetMs(Number(event.target.value) || 0)} />ms</label>
               <button className="toolbar-button" disabled={!doc.lines.some((line) => typeof line.start === "number")} onClick={() => {
                 const next = shiftAll(docRef.current, offsetMs / 1000);
                 if (next) { apply(next); setOffsetMs(0); setError(""); }
@@ -418,7 +418,7 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
           <div className="auth-modal" data-glass-edge="" role="dialog" aria-modal="true">
             <p>{pending.message}</p>
             <div className="lxe-confirm-actions">
-              <button className="ghost-button" onClick={() => setPending(null)}>Cancel</button>
+              <button className="ghost-button" data-glass-edge="" onClick={() => setPending(null)}>Cancel</button>
               <button className="primary-button" onClick={() => { const run = pending.run; setPending(null); run(); }}>{pending.confirm}</button>
             </div>
           </div>

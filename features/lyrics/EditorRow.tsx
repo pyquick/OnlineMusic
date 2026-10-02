@@ -35,7 +35,7 @@ function TimeInput({ value, title, onChange }: { value: number | undefined; titl
     setFocused(false);
   };
   return (
-    <input className="lxe-time-input" inputMode="decimal" value={shown} title={title} placeholder="–"
+    <input className="lxe-time-input" data-glass-edge="" inputMode="decimal" value={shown} title={title} placeholder="–"
       onFocus={() => { setDraft(value === undefined ? "" : value.toFixed(3)); setFocused(true); }}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
@@ -146,10 +146,10 @@ export default function EditorRow({ doc, index, duration, selected, selectedToke
       </header>
       <div className="lxe-fields">
         <label>Original
-          <input value={line.text} placeholder="Type the line" onChange={(event) => onApply(setLineText(doc, index, event.target.value), `text:${index}`)} />
+          <input data-glass-edge="" value={line.text} placeholder="Type the line" onChange={(event) => onApply(setLineText(doc, index, event.target.value), `text:${index}`)} />
         </label>
         <label>Translation
-          <input value={line.translation ?? ""} placeholder="Add a translation" onChange={(event) => onApply(setLineTranslation(doc, index, event.target.value || undefined), `trans:${index}`)} />
+          <input data-glass-edge="" value={line.translation ?? ""} placeholder="Add a translation" onChange={(event) => onApply(setLineTranslation(doc, index, event.target.value || undefined), `trans:${index}`)} />
         </label>
       </div>
       <div className={`lxe-track ${timed ? "" : "is-untimed"}`}
@@ -163,7 +163,7 @@ export default function EditorRow({ doc, index, duration, selected, selectedToke
         {tokens.length > 0 && (
           <div className="lxe-tokens">
             {tokens.map((token, tokenIndex) => (
-              <button type="button" key={tokenIndex} className={`lxe-chip ${selected && selectedToken === tokenIndex ? "is-selected" : ""}`}
+              <button type="button" key={tokenIndex} className={`lxe-chip ${selected && selectedToken === tokenIndex ? "is-selected" : ""}`} data-glass-edge=""
                 onClick={() => onSelect(index, tokenIndex)} title={`${token.text} · ${stampText(token.start)} → ${stampText(token.end)}`}>
                 <b>{token.text || "·"}</b><small>{stampText(token.start)}→{stampText(token.end)}</small>
               </button>
@@ -173,7 +173,7 @@ export default function EditorRow({ doc, index, duration, selected, selectedToke
         {tokens.length === 0 && <p className="lxe-words-hint">{timed ? "No words yet — Tokenize splits this sentence into them." : "Time the sentence first, then Tokenize it into words."}</p>}
         {selectedTokenEntry && (
           <div className="lxe-token-edit">
-            <input className="lxe-token-text" value={selectedTokenEntry.text} aria-label="Token text"
+            <input className="lxe-token-text" data-glass-edge="" value={selectedTokenEntry.text} aria-label="Token text"
               onChange={(event) => onApply(setTokenText(doc, index, selectedToken, event.target.value), `tokentext:${index}:${selectedToken}`)} />
             <TimeInput value={selectedTokenEntry.start} title="Word start (seconds)" onChange={(value) => onApply(setTokenSpan(doc, index, selectedToken, { start: value }))} />
             <TimeInput value={selectedTokenEntry.end} title="Word end (seconds)" onChange={(value) => onApply(setTokenSpan(doc, index, selectedToken, { end: value }))} />
