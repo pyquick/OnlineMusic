@@ -6,14 +6,17 @@
    studio wears. */
 .lgs-stage{position:relative;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:14px;height:220px;margin:4px 0 14px;padding:14px;border-radius:var(--radius-card);overflow:hidden;border:1px solid var(--line);background:var(--panel2)}
 .lgs-photo{position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
-/* Clear glass, deliberately: no veil and no blur. Over a photograph a milky pane and a frosted
-   blur both read as a grey mask laid on the picture — and the blur also smears the very detail
-   the rim is displacing (the lesson the pill's bubble taught). What is left is the glass itself:
-   the edge lens and its rainbow, over a photo that runs through the control untouched. */
+/* The body is deliberately clear — no veil: over a photograph a milky pane turns the controls
+   into grey masks laid on the picture, and the sampler's auto-shade used to darken them further.
+   What the preview does show is the rest of the material, live: the frost (the Blur slider, at
+   the pane's own level for panel/card and the chip's level for the small families), the edge
+   lens, and the rainbow — so every dial's effect on a control is visible. */
 .lgs-sample{position:relative;z-index:1;display:grid;place-items:center;border:1px solid var(--chip-line);border-radius:var(--radius-control);background:none;
   color:var(--ink);font-size:var(--text-md);font-weight:600;text-shadow:0 1px 3px #fff9;
-  -webkit-backdrop-filter:saturate(var(--material-saturate));
-  backdrop-filter:saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
+  -webkit-backdrop-filter:blur(var(--lgs-blur,var(--material-blur-pane))) saturate(var(--material-saturate));
+  backdrop-filter:blur(var(--lgs-blur,var(--material-blur-pane))) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
+/* The small families take the chip-level frost, as their real controls do. */
+:is(.lgs-button,.lgs-field,.lgs-chip,.lgs-tile){--lgs-blur:var(--material-blur-chip)}
 /* The families, in the same names the app's class lists carry. */
 .lgs-pane{--glass-group:pane;width:118px;height:64px;border-radius:var(--radius-card)}
 .lgs-card{--glass-group:card;width:132px;height:72px;border-radius:var(--radius-card)}
