@@ -44,6 +44,16 @@
  * pressed against the edge while the same interior still sits at its own place. The tall panes
  * keep the fold-free bound; only the bar runs at `k ≈ 0.75`.
  *
+ * The bend is colour-blind unless asked. The Settings master dial splits it: the backdrop is cut
+ * into its three channels, each displaced by its own scale — red reads shallower than the green,
+ * the blue deeper, which is the order a prism separates them in — and the three images are put
+ * back together with two `feBlend screen` passes. The recombination is exact, because each image
+ * carries a single channel (screen adds them and nothing else), and the flat interior, where the
+ * map is neutral, reassembles into the untouched backdrop. The split is scaled per pane by
+ * `--glass-glow`, the brightness the ink sampler measured behind it, so the brightest scenes
+ * disperse the most. At zero the filter is the same two nodes it has always been, and a pane pays
+ * nothing for a rainbow it is not showing.
+ *
  * All of that is Chromium's, because `backdrop-filter` takes a filter reference only there: Safari
  * cannot bend a backdrop, so none of this is attached on an engine that cannot use it. What a pane
  * loses there, a shaded rim stands in for — the shell is marked and CSS paints it from the same two
@@ -54,6 +64,12 @@
 export const MAX_EDGE_OFFSET = 84;
 /** Largest rim band the slider can ask for, in CSS px. */
 export const MAX_BAND_PX = 84;
+/**
+ * The rainbow's ceiling: the deepest per-channel spread, as a share of the rim pull. The master
+ * dial's 0–100% maps onto this, and the pane's measured brightness (`--glass-glow`) scales what is
+ * left. Red displaces by `pull × (1 − spread)`, green by `pull`, blue by `pull × (1 + spread)`.
+ */
+export const MAX_DISPERSION = 0.3;
 /**
  * The seven families a rim can belong to. Each one may carry its own base band/pull, so a card's
  * bend and a word chip's can be tuned apart from the panes': an element names its family in the
@@ -244,12 +260,18 @@ type Pane = {
    */
   bandCap: number;
   pullCap: number;
+  /** The dispersion branch's three channel displacements, built the first time the rainbow is on. */
+  split: { red: SVGFEDisplacementMapElement; green: SVGFEDisplacementMapElement; blue: SVGFEDisplacementMapElement } | null;
+  /** The `--glass-glow` the scales were last applied for, so the poll only redraws on a change. */
+  glow: string;
 };
 
 /** The handle the two Settings sliders drive, and the pane teardown that goes with it. */
 export type GlassEdgeHandle = {
   setOffset(next: number): void;
   setRefraction(next: number): void;
+  /** The master rainbow, 0–1: how far each colour channel of the rim's bend separates. */
+  setDispersion(next: number): void;
   /** Per-family base band/pull; a group's pane reads these instead of the two sliders. */
   setGroups(next: GlassGroupValues): void;
   destroy(): void;
@@ -268,6 +290,7 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     return {
       setOffset() {},
       setRefraction() {},
+      setDispersion() {},
       setGroups() {},
       destroy() { root.classList.remove("glass-rim-fallback"); },
     };
@@ -283,6 +306,8 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
   const panes = new Map<HTMLElement, Pane>();
   const sizes = new ResizeObserver(() => schedule());
   let offset = 0;
+  /** The master rainbow, 0–1; 0 keeps every pane on the plain colour-blind displacement. */
+  let dispersion = 0;
   /** Band width in CSS px, before a pane's own multiplier — an absolute size, not a share. */
   let bandPx = 0;
   /** The corner-radius multiplier as last read: a change to it reshapes every map's corners. */
@@ -293,9 +318,70 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
   let frame = 0;
 
   /**
-   * Writes the two sliders into the pane's filter. The map is unchanged, so this is the whole
-   * per-move cost of the distortion slider: one `scale` attribute. `scale` is twice the pixel
-   * offset the rim pulls with, and the map already points at the sample, so it stays positive.
+   * Builds the dispersion branch into the pane's filter, or takes it back out. Off, the filter is
+   * the two nodes it has always been, so a pane pays nothing for a rainbow it is not showing. On,
+   * a `feColorMatrix` isolates each channel of the backdrop, each isolated image is displaced by
+   * its own scale, and two `feBlend screen` passes put them back together — exact, because each
+   * displaced image carries one channel and nothing else. The nodes are kept on the pane once
+   * built, so only the first crossing of zero costs the rebuild.
+   */
+  function useSplit(pane: Pane, on: boolean) {
+    if (on === (pane.split !== null)) return;
+    if (!on) {
+      // The branch is gone from the filter, so the pane must stop believing it is there: a
+      // stale non-null `split` made the next turn-on a no-op, and the scales landed on nodes
+      // that had already been detached.
+      pane.split = null;
+      pane.filter.replaceChildren(pane.image, pane.displacement);
+      return;
+    }
+    const channel = (keep: number, name: string) => {
+      const matrix = document.createElementNS(NS, "feColorMatrix");
+      matrix.setAttribute("in", "SourceGraphic");
+      matrix.setAttribute("type", "matrix");
+      // One is kept, the others are zeroed — and the 1 lands in the kept channel's *own*
+      // column: a row is `[r g b a 0]`, so keeping green is `0 1 0 0 0`, never `1 0 0 0 0`.
+      // (That first-column form read red for every channel, and a rim recombined from three
+      // copies of the red channel is a rim that has lost its colour — the glass went grey.)
+      const row = (channel: number) => (channel === keep ? [0, 1, 2].map((c) => (c === channel ? "1" : "0")).join(" ") + " 0 0" : "0 0 0 0 0");
+      matrix.setAttribute("values", `${[0, 1, 2].map(row).join(" ")} 0 0 0 1 0`);
+      matrix.setAttribute("result", `${name}Src`);
+      const displace = document.createElementNS(NS, "feDisplacementMap");
+      displace.setAttribute("in", `${name}Src`);
+      displace.setAttribute("in2", "map");
+      displace.setAttribute("xChannelSelector", "R");
+      displace.setAttribute("yChannelSelector", "G");
+      displace.setAttribute("scale", "0");
+      displace.setAttribute("result", `${name}Disp`);
+      return { matrix, displace };
+    };
+    const red = channel(0, "red");
+    const green = channel(1, "green");
+    const blue = channel(2, "blue");
+    const blend = (first: string, second: string, result: string) => {
+      const node = document.createElementNS(NS, "feBlend");
+      node.setAttribute("in", first);
+      node.setAttribute("in2", second);
+      node.setAttribute("mode", "screen");
+      if (result) node.setAttribute("result", result);
+      return node;
+    };
+    pane.filter.replaceChildren(
+      pane.image,
+      red.matrix, red.displace,
+      green.matrix, green.displace,
+      blue.matrix, blue.displace,
+      blend("redDisp", "greenDisp", "rgDisp"),
+      blend("rgDisp", "blueDisp", ""),
+    );
+    pane.split = { red: red.displace, green: green.displace, blue: blue.displace };
+  }
+
+  /**
+   * Writes the sliders into the pane's filter. The map is unchanged, so this is the whole
+   * per-move cost of the distortion slider: one `scale` attribute (three when the rainbow is on).
+   * `scale` is twice the pixel offset the rim pulls with, and the map already points at the
+   * sample, so it stays positive.
    *
    * The pull is held to a share of the band, so a sample only ever reads the glass the band
    * covers. Deeper and it would land on the pane's flat interior, folding the rim — that
@@ -313,8 +399,34 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
       pane.element.style.removeProperty("--glass-edge-filter");
       return;
     }
-    pane.displacement.setAttribute("scale", String(pull * 2));
+    // The rainbow: the master dial, scaled by the brightness the sampler measured behind this
+    // pane (1 while nothing has measured it yet). Red travels shallower than the green, the blue
+    // deeper — and the band's flat interior, where the map is neutral, reassembles untouched.
+    const raw = pane.element.style.getPropertyValue("--glass-glow");
+    pane.glow = raw;
+    const parsed = Number.parseFloat(raw);
+    const glow = Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 1;
+    const spread = dispersion * MAX_DISPERSION * glow;
+    const scale = pull * 2;
+    if (spread > 0.002) {
+      useSplit(pane, true);
+      pane.split!.red.setAttribute("scale", String(scale * (1 - spread)));
+      pane.split!.green.setAttribute("scale", String(scale));
+      pane.split!.blue.setAttribute("scale", String(scale * (1 + spread)));
+    } else {
+      useSplit(pane, false);
+      pane.displacement.setAttribute("scale", String(scale));
+    }
     pane.element.style.setProperty("--glass-edge-filter", `url(#${pane.filter.id})`);
+  }
+
+  /** The sampler writes `--glass-glow` on its own clock; this carries a change into the scales. */
+  function syncGlow() {
+    if (dispersion <= 0) return;
+    panes.forEach((pane) => {
+      if (pane.element.style.getPropertyValue("--glass-glow") === pane.glow) return;
+      applyOptics(pane);
+    });
   }
 
   function createPane(element: HTMLElement) {
@@ -340,7 +452,7 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     // stylesheet that moved them at runtime would be asking for a map rebuild nobody announced.
     const style = getComputedStyle(element);
     const cap = (name: string) => { const value = Number.parseFloat(style.getPropertyValue(name)); return Number.isFinite(value) && value > 0 ? value : 0; };
-    const pane: Pane = { element, group: groupOf(style), filter, image, displacement, geometry: "", width: 0, height: 0, band: 0, scale: Math.max(1, scale), bandCap: cap("--glass-band-cap"), pullCap: cap("--glass-pull-cap") };
+    const pane: Pane = { element, group: groupOf(style), filter, image, displacement, geometry: "", width: 0, height: 0, band: 0, scale: Math.max(1, scale), bandCap: cap("--glass-band-cap"), pullCap: cap("--glass-pull-cap"), split: null, glow: "" };
     sizes.observe(element);
     applyOptics(pane);
     return pane;
@@ -426,6 +538,9 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
   const mutations = new MutationObserver(schedule);
   mutations.observe(root, { childList: true, subtree: true });
   window.addEventListener("resize", schedule);
+  // The dispersion gain is measured by the ink sampler on its own 250ms clock and announced by
+  // nothing the engine would hear, so it is polled — a handful of inline-style reads.
+  const glowPoll = window.setInterval(syncGlow, 400);
   schedule();
 
   return {
@@ -445,6 +560,11 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
         applyOptics(pane);
       });
     },
+    /** The master rainbow. Only the scale attributes move; the maps are geometry and stay put. */
+    setDispersion(next: number) {
+      dispersion = Math.min(1, Math.max(0, next));
+      panes.forEach((pane) => applyOptics(pane));
+    },
     /** The per-family bases: a pane reads its own family's values instead of the sliders. The
         band lives inside the map, so this redraws like the refraction slider does. */
     setGroups(next: GlassGroupValues) {
@@ -456,6 +576,7 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     },
     destroy() {
       if (frame) window.cancelAnimationFrame(frame);
+      window.clearInterval(glowPoll);
       mutations.disconnect();
       sizes.disconnect();
       window.removeEventListener("resize", schedule);

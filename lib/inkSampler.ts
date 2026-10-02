@@ -17,6 +17,10 @@
  * Only panes whose scene can have changed are re-read, a few times a second, so the cost never
  * lands on a frame: the whole tick is a handful of rects, one 16x16 blit per media slice, and
  * arithmetic.
+ *
+ * The same reading feeds the prism: each pane also wears a `--glass-glow`, its backdrop's
+ * brightness lifted onto a floor, which both engines scale the rainbow's channel split by — so the
+ * brightest scenes disperse the most, and every pane's rainbow answers the scene under it.
  */
 
 /** How often the scene is re-read. `dirty` panes are sampled on the next tick after the change. */
@@ -59,6 +63,15 @@ const SHADE_STEP = 0.02;
 const SHADE_DARK = 0.62;
 const SHADE_FLOOR = 0.15;
 const SHADE_MAX = 0.85;
+/**
+ * The dispersion gain's floor. The user's rule for the rainbow is that the brighter the place,
+ * the more visible its refraction, and the sampler is the one thing that knows how bright each
+ * pane's backdrop actually is — so it publishes a 0–1 gain per pane (`--glass-glow`), which both
+ * engines scale their channel split by. Dark maps to the floor rather than to zero: a pitch-black
+ * scene keeps a fifth of the split, because the glass still has an edge there and a rainbow that
+ * switched off entirely would read as a bug rather than as physics.
+ */
+const GLOW_FLOOR = 0.2;
 /**
  * The two ends past the mix. Type is grey by default and stays grey through the whole of the
  * studio's own range, but a backdrop at the extremes calls for type at its extreme: over a black
@@ -179,6 +192,8 @@ export function startInkSampler(): () => void {
   const worn = new WeakMap<HTMLElement, { mix: number; solid: number; pale: number }>();
   /** The shade each pane currently wears, so the veil it paints can be un-shaded on the way back in. */
   const wornShade = new WeakMap<HTMLElement, number>();
+  /** The dispersion gain each pane currently wears, so a scene that barely moves it can be dropped. */
+  const wornGlow = new WeakMap<HTMLElement, number>();
   /** The mix each pane carries for the glyphs inside it that hold no text of their own. */
   const paneMixes = new WeakMap<HTMLElement, number>();
   const dirtyPanes = new Set<HTMLElement>();
@@ -299,12 +314,21 @@ export function startInkSampler(): () => void {
    * scene as a photograph is.
    */
   const SURFACES = ".panel,.hero-panel,.asset-card,.project-card,.album-card,.album-detail,.track-row,.settings-card,.parameter-card,.upload-modal,.auth-modal,.dropzone,.empty-assets";
+  /**
+   * A painted layer that may sit *inside* another pane and still be what a pane's glass shows:
+   * the Settings preview's scene, which is real DOM content standing in for the page behind the
+   * preview samples. An ordinary surface inside a pane is skipped — a pane's own paint must not
+   * count as the scene behind it — but a marked layer is content, and the panes above it read it
+   * as their backdrop, so a sample over the scene's dark side disperses less than one over its
+   * lit side.
+   */
+  const LAYERS = "[data-glass-layer]";
 
   /** Every surface's box, brightness and opacity, read once a tick for every pane to share. */
   function surfacesUnder(layer: HTMLElement | null): Layer[] {
     const found: Layer[] = [];
-    for (const element of Array.from(document.querySelectorAll<HTMLElement>(SURFACES))) {
-      if (element.closest("[data-glass-edge]")) continue;
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>(`${SURFACES},${LAYERS}`))) {
+      if (element.closest("[data-glass-edge]") && !element.hasAttribute("data-glass-layer")) continue;
       if (element.closest(".video-overlay") !== layer) continue;
       const box = element.getBoundingClientRect();
       if (box.width < 8 || box.height < 8) continue;
@@ -404,6 +428,20 @@ export function startInkSampler(): () => void {
     return shade;
   }
 
+  /**
+   * Writes a pane's dispersion gain: the measured brightness of what the pane covers, lifted onto
+   * the floor, dead-banded like everything else. Both engines read it straight off the inline
+   * style — the SVG one on its own poll, the WebGL one per frame — so it is written even when the
+   * auto-shade is off, which is a setting about the tint, not about the prism.
+   */
+  function wearGlow(pane: HTMLElement, luma: number): void {
+    const glow = GLOW_FLOOR + (1 - GLOW_FLOOR) * Math.min(1, Math.max(0, luma));
+    const state = wornGlow.get(pane);
+    if (state !== undefined && Math.abs(glow - state) < SHADE_STEP) return;
+    wornGlow.set(pane, glow);
+    pane.style.setProperty("--glass-glow", glow.toFixed(3));
+  }
+
   /** A straight ramp, 0 at or below `low` and 1 at or above `high`. */
   function rise(luma: number, low: number, high: number): number {
     if (luma <= low) return 0;
@@ -475,6 +513,8 @@ export function startInkSampler(): () => void {
       const veil = { luma: Math.min(1, painted.luma / (1 - worn * SHADE_MAX)), alpha: painted.alpha };
       const behind = lumaOver(rect, baseline, surfaces, tiles);
       const shade = wearShade(pane, behind);
+      // The prism's gain, from the same measured scene — brighter backdrop, wider rainbow.
+      wearGlow(pane, behind);
       // The pane carries a mix of its own as well as the shade: an icon has no text run to wear
       // one, and the bar's glyphs have to follow a black frame exactly as its title does.
       const paneMix = inkMix(veilOver(veil, behind, shade));
@@ -531,6 +571,7 @@ export function startInkSampler(): () => void {
     });
     document.querySelectorAll<HTMLElement>("[data-glass-edge]").forEach((pane) => {
       pane.style.removeProperty("--glass-shade");
+      pane.style.removeProperty("--glass-glow");
       pane.style.removeProperty("--ink-mix");
     });
   };

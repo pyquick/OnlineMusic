@@ -8,6 +8,11 @@
  * capped at half the pane's short side, all of it the SVG path's own maths, constant for constant
  * — and the two engines therefore show the same bend.
  *
+ * The rainbow is the same split here as there: three samples along the bend, red at the shallow
+ * scale and blue at the deep one, each taking its own channel — scaled by the master dial and by
+ * the ink sampler's measured `--glass-glow`, so the brightest backdrops disperse the most. At
+ * zero the branch is skipped and the one fetch stands.
+ *
  * Only the band is drawn. The pane keeps its `backdrop-filter: blur()`, which Safari does support,
  * so everything inside the band is the browser's own live backdrop, as sharp and as current as
  * Chromium's; the canvas paints from `inside == band` (where the displacement is zero, so the two
@@ -26,7 +31,7 @@
  * reading each pane's veil from the element's own background.
  */
 
-import { MAX_BAND_PX, MAX_EDGE_OFFSET, type GlassGroup, type GlassGroupValues } from "./glassEdge";
+import { MAX_BAND_PX, MAX_DISPERSION, MAX_EDGE_OFFSET, type GlassGroup, type GlassGroupValues } from "./glassEdge";
 
 /** The band's own cap: the two rims of a short pane must not meet in its middle. */
 const MAX_BAND_SHARE = 0.5;
@@ -90,6 +95,8 @@ export type GlassParameters = {
   band: number;
   /** Corner-radius multiplier, as `--glass-radius` carries it. */
   radius: number;
+  /** The master rainbow, 0–1: how far the sample separates per colour channel. */
+  dispersion: number;
 };
 
 /**
@@ -170,8 +177,11 @@ uniform float pull;          // rim pull, device px
 uniform float veil;          // veil alpha at this clarity
 uniform vec3 tint;           // the colour that veil lays down, shade already folded in
 uniform float saturation;    // the saturate() the pane's own backdrop-filter applies
+uniform float dispersion;    // the master rainbow, 0–1
+uniform float glow;          // this pane's measured backdrop brightness, 0.2–1
 
 const float MAX_BEND = ${MAX_BEND.toFixed(12)};
+const float MAX_DISPERSION = ${MAX_DISPERSION.toFixed(3)};
 
 float roundedBoxDistance(vec2 p, vec2 h, float r) {
   vec2 q = abs(p) - (h - r);
@@ -226,11 +236,29 @@ void main() {
   // The raster is its own resolution (a CSS px per texel, however dense the screen), so both the
   // pixel's position and the bend it carries are converted into raster pixels here.
   vec2 shift = vec2(inward.x, -inward.y) * bend * pull;
-  vec2 rasterPx = (vec2(panePx.x, view.y - panePx.y) + shift) * rasterRatio + rasterOrigin;
-  rasterPx = clamp(rasterPx, vec2(0.), rasterSize - vec2(1.));
+  vec2 paneOrigin = vec2(panePx.x, view.y - panePx.y);
+  // The rainbow: the master dial scaled by this pane's measured brightness (glow) splits the
+  // sample per channel — red reads shallower than the green, the blue deeper, the order a prism
+  // separates them in. At zero the single fetch stands, so a pane pays nothing for a rainbow it
+  // is not showing. Each fetch is clamped into the texture on its own: at the band's strongest
+  // bend a channel's sample would otherwise run off the raster where a rim meets its edge.
+  vec3 color;
+  float spread = dispersion * glow * MAX_DISPERSION;
+  if (spread > .002) {
+    vec2 redPx = clamp((paneOrigin + shift * (1. - spread)) * rasterRatio + rasterOrigin, vec2(0.), rasterSize - vec2(1.));
+    vec2 greenPx = clamp((paneOrigin + shift) * rasterRatio + rasterOrigin, vec2(0.), rasterSize - vec2(1.));
+    vec2 bluePx = clamp((paneOrigin + shift * (1. + spread)) * rasterRatio + rasterOrigin, vec2(0.), rasterSize - vec2(1.));
+    color = vec3(
+      texture(frosted, redPx / rasterSize).r,
+      texture(frosted, greenPx / rasterSize).g,
+      texture(frosted, bluePx / rasterSize).b);
+  } else {
+    vec2 rasterPx = clamp((paneOrigin + shift) * rasterRatio + rasterOrigin, vec2(0.), rasterSize - vec2(1.));
+    color = texture(frosted, rasterPx / rasterSize).rgb;
+  }
   // Both material terms the pane's own backdrop-filter adds, in its order: the blur is the
   // texture's, then the saturation, then the veil the pane lays over it.
-  vec3 color = saturate(texture(frosted, rasterPx / rasterSize).rgb, saturation);
+  color = saturate(color, saturation);
   // The pane's own tint, already darkened by whatever shade the ink sampler measured behind it,
   // so the band and the flat middle it meets are painted with the same colour.
   outColor = vec4(mix(color, tint, veil), 1.);
@@ -831,6 +859,11 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
       const lit = 1 - Math.min(1, Math.max(0, shade)) * SHADE_MAX;
       gl!.uniform3f(gl!.getUniformLocation(program, "tint"), tint[0] * lit, tint[1] * lit, tint[2] * lit);
       gl!.uniform1f(gl!.getUniformLocation(program, "saturation"), pane.saturation);
+      gl!.uniform1f(gl!.getUniformLocation(program, "dispersion"), Math.min(1, Math.max(0, parameters.dispersion)));
+      // The prism's gain, like the shade above: written inline by the ink sampler on its own
+      // clock, read here without a style flush. 1 until the sampler has looked at this pane.
+      const glow = Number.parseFloat(pane.element.style.getPropertyValue("--glass-glow"));
+      gl!.uniform1f(gl!.getUniformLocation(program, "glow"), Number.isFinite(glow) ? Math.min(1, Math.max(0, glow)) : 1);
       gl!.activeTexture(gl!.TEXTURE0);
       gl!.bindTexture(gl!.TEXTURE_2D, frosted);
       gl!.uniform1i(gl!.getUniformLocation(program, "frosted"), 0);

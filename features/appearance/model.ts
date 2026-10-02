@@ -22,6 +22,12 @@ export const DEFAULT_GLASS_RADIUS = 100;
 export const DEFAULT_GLASS_CLARITY = 60;
 /** How far the rim pulls the backdrop inward, in px. */
 export const DEFAULT_GLASS_EDGE = 9;
+/**
+ * The master rainbow, 0–100: the share of the rim's bend each colour channel separates by, scaled
+ * per pane by the measured brightness behind it. On by default — it is the one dial every control
+ * answers to at once, and a fresh install should show what it does.
+ */
+export const DEFAULT_GLASS_DISPERSION = 50;
 /** How far in from the edge the bend reaches, in px — the same band on every pane and edge. */
 export const DEFAULT_GLASS_REFRACTION = 30;
 /** Settings saved before the band became a width held a percent of the pane's short side. */
