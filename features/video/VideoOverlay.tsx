@@ -80,7 +80,7 @@ export default function VideoOverlay({
         onLoadedMetadata={(event) => onDuration(event.currentTarget.duration)}
         onTimeUpdate={(event) => onProgress(event.currentTarget.currentTime)} />
       <div className="video-shell-sidebar">
-        <aside className="sidebar" data-glass-edge="">
+        <aside className="sidebar" data-glass-edge="" data-glass-scene="moving-media">
           {/* Same rail styling as the main sidebar, but listing the media you can play. */}
           <div className="brand"><div className="brand-mark"><Sparkles size={17} /></div><span>onlineMusic</span></div>
           <nav className="nav-group video-playlist">
@@ -105,7 +105,7 @@ export default function VideoOverlay({
       <div className={`video-dock-hit-zone ${controlsVisible ? "is-visible" : ""}`}
         onMouseEnter={() => setControlsVisible(true)}
         onMouseLeave={() => setHideTimer(window.setTimeout(() => setControlsVisible(false), 250))}>
-        <div className={`video-player-dock ${controlsVisible ? "is-visible" : ""}`} data-glass-edge="3">
+        <div className={`video-player-dock ${controlsVisible ? "is-visible" : ""}`} data-glass-edge="3" data-glass-scene="moving-media">
           <div className="now-playing">
             <span className="mini-cover"><FileVideo size={16} /></span>
             <div className="now-playing-copy"><strong><span>{item.title || item.file.name}</span></strong><small>video · local preview</small></div>

@@ -2,12 +2,26 @@
 
 import { useRef, useState } from "react";
 import { X } from "lucide-react";
-import { MAX_EDGE_OFFSET, MAX_BAND_PX } from "@/lib/glassEdge";
+import { MAX_EDGE_OFFSET, MAX_BAND_PX, type GlassGroup, type GlassGroupValues } from "@/lib/glassEdge";
 import { RangeControl } from "@/design-system/components/RangeControl";
+import "./appearance.css";
 import {
   GRADIENT_PRESETS, GLASS_BLUR_STEP, MAX_GLASS_BLUR, SOLID_PRESETS, TINT_PRESETS,
   hexToRgb, prepareBackgroundImage, rgbToHex, type Appearance,
 } from "./model";
+
+/** The seven families a rim can belong to, in the order the preview lays their samples out. Each
+    row's sliders show the effective value — the family's own if it has one, the global sliders'
+    otherwise — and "Follow" clears the override. */
+const GLASS_FAMILIES: { id: GlassGroup; label: string }[] = [
+  { id: "pane", label: "Panels" },
+  { id: "card", label: "Cards" },
+  { id: "button", label: "Buttons" },
+  { id: "field", label: "Fields" },
+  { id: "chip", label: "Chips" },
+  { id: "capsule", label: "Capsule" },
+  { id: "tile", label: "Bar tiles" },
+];
 
 export type SettingsViewProps = {
   blur: number; onBlur: (next: number) => void;
@@ -17,10 +31,13 @@ export type SettingsViewProps = {
   radius: number; onRadius: (next: number) => void;
   appearance: Appearance;
   onAppearance: (patch: Partial<Appearance>) => void;
+  /** Per-family edge refraction; a family absent here follows the two global sliders. */
+  groups: GlassGroupValues;
+  onGroups: (next: GlassGroupValues) => void;
   onClose: () => void;
 };
 
-export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, edge, onEdge, refraction, onRefraction, radius, onRadius, appearance, onAppearance, onClose }: SettingsViewProps) {
+export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, edge, onEdge, refraction, onRefraction, radius, onRadius, appearance, onAppearance, groups, onGroups, onClose }: SettingsViewProps) {
   const [imageError, setImageError] = useState("");
   const [busy, setBusy] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
@@ -104,6 +121,44 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
           <RangeControl label="Edge refraction" value={refraction} min={0} max={MAX_BAND_PX} display={`${refraction}px`} onChange={onRefraction} />
           <RangeControl label="Corner radius" value={radius} min={50} max={150} display={`${radius}%`} onChange={onRadius} />
           <p className="settings-hint">Blur frosts what sits behind a pane and clarity is how much of it shows through. Edge distortion is how hard the rim bends the backdrop, edge refraction how far in that bend reaches. All five apply live and are saved in this browser.</p>
+        </div>
+      </div>
+
+      <div className="settings-card panel" data-glass-edge="">
+        <div className="panel-title"><h3>Liquid glass · per control</h3></div>
+        <div className="settings-page-body">
+          <p className="settings-hint">Each family of controls can bend its own edges. The preview sits on stripes — a flat colour has nothing for a rim to bend — and answers every slider live. A family left on “Follow” reads the two sliders above.</p>
+          <div className="lgs-stage" data-glass-edge="3" aria-hidden="true">
+            <span className="lgs-sample lgs-pane" data-glass-edge="">Panel</span>
+            <span className="lgs-sample lgs-card" data-glass-edge="">Card</span>
+            <button className="lgs-sample lgs-button" data-glass-edge="" type="button" tabIndex={-1}>Button</button>
+            <span className="lgs-sample lgs-field" data-glass-edge="">Field</span>
+            <span className="lgs-sample lgs-chip" data-glass-edge="">Chip</span>
+            <span className="lgs-sample lgs-capsule" data-glass-edge="">Capsule</span>
+            <span className="lgs-sample lgs-tile" data-glass-edge="">◍</span>
+          </div>
+          <div className="lgs-rows">
+            {GLASS_FAMILIES.map((family) => {
+              const own = groups[family.id];
+              const band = own?.band ?? refraction;
+              const pull = own?.pull ?? edge;
+              const set = (patch: { band?: number; pull?: number }) => onGroups({ ...groups, [family.id]: { band: patch.band ?? band, pull: patch.pull ?? pull } });
+              return (
+                <div className={`lgs-row ${own ? "is-own" : ""}`} key={family.id} data-sample={family.id}>
+                  <span className="lgs-name">{family.label}</span>
+                  <label className="lgs-ctl" title="Edge refraction — how far in the bend reaches">Width
+                    <input type="range" min={0} max={MAX_BAND_PX} value={band} onChange={(event) => set({ band: Number(event.target.value) })} />
+                    <b>{band}px</b>
+                  </label>
+                  <label className="lgs-ctl" title="Edge distortion — how hard the rim bends the backdrop">Strength
+                    <input type="range" min={0} max={MAX_EDGE_OFFSET} value={pull} onChange={(event) => set({ pull: Number(event.target.value) })} />
+                    <b>{pull}px</b>
+                  </label>
+                  <button className="ghost-button lgs-follow" type="button" disabled={!own} onClick={() => { const next = { ...groups }; delete next[family.id]; onGroups(next); }}>Follow</button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </section>

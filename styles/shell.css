@@ -40,7 +40,7 @@
    around its own middle — 1 when there is no trip) and `--bubble-sx`/`--bubble-sy` are the lean
    into its own speed, wider along the travel and a little flatter across it. One transform
    composes them; the `scale` property stays free for the press. */
-.pill-bubble{position:absolute;z-index:0;left:0;top:5px;bottom:5px;width:var(--bubble-w,0px);border-radius:999px;
+.pill-bubble{--glass-group:capsule;position:absolute;z-index:0;left:0;top:5px;bottom:5px;width:var(--bubble-w,0px);border-radius:999px;
   translate:var(--bubble-x,0px) 0;pointer-events:none;
   transform:scaleX(calc(var(--bubble-sx,1) * var(--bubble-swell,1))) scaleY(calc(var(--bubble-sy,1) * var(--bubble-swell,1)));
   /* Below the pill's own veil, so the capsule reads as a clearer window in it rather than a

@@ -79,13 +79,14 @@ const PALE_ABOVE = 0.998;
 let autoShade = true;
 /** Set while a scene change has happened that no listener of ours would hear. */
 let dirty = true;
+let allDirty = true;
 
 /**
  * Tells the sampler the scene changed. Everything it watches for itself — scroll, resize, media
  * events, mutations — marks this on its own; this is for the caller that changes the backdrop or
  * the tint, which are attributes on one element and raise no event at all.
  */
-export function touchScene() { dirty = true; }
+export function touchScene() { dirty = true; allDirty = true; }
 
 /** Turns the glass's automatic light/dark off, or back on, from Settings. */
 export function setAutoShade(on: boolean) {
@@ -97,6 +98,7 @@ const TILE = 16;
 
 type Box = { x: number; y: number; width: number; height: number };
 type Media = HTMLImageElement | HTMLVideoElement | HTMLCanvasElement;
+type Scene = "fixed-shell" | "moving-page" | "nested-host" | "moving-media";
 /** One media slice under a pane, flattened to a TILE x TILE brightness map. */
 type Tile = { slice: Box; cells: Float32Array };
 /** A flat painted layer under a pane: an opaque surface, or the page itself. */
@@ -179,11 +181,43 @@ export function startInkSampler(): () => void {
   const wornShade = new WeakMap<HTMLElement, number>();
   /** The mix each pane carries for the glyphs inside it that hold no text of their own. */
   const paneMixes = new WeakMap<HTMLElement, number>();
+  const dirtyPanes = new Set<HTMLElement>();
   const runs = new WeakMap<HTMLElement, { stamp: number; found: HTMLElement[] }>();
   /** Bumped on every mutation: a pane's run list is re-scanned only when the DOM has moved. */
   let stamp = 0;
   let frame = 0;
   dirty = true;
+  allDirty = true;
+
+  function sceneOf(pane: HTMLElement): Scene {
+    const value = pane.dataset.glassScene;
+    if (value === "fixed-shell" || value === "moving-page" || value === "nested-host" || value === "moving-media") return value;
+    return "moving-page";
+  }
+
+  function markPane(pane: HTMLElement) {
+    dirtyPanes.add(pane);
+    dirty = true;
+  }
+
+  function markAll() {
+    document.querySelectorAll<HTMLElement>("[data-glass-edge]").forEach(markPane);
+    dirty = true;
+  }
+
+  function markScroll(target: EventTarget | null) {
+    const scroller = target instanceof HTMLElement ? target : null;
+    if (!scroller) {
+      document.querySelectorAll<HTMLElement>("[data-glass-edge]").forEach((pane) => {
+        if (sceneOf(pane) !== "fixed-shell") markPane(pane);
+      });
+      return;
+    }
+    document.querySelectorAll<HTMLElement>("[data-glass-edge]").forEach((pane) => {
+      const scene = sceneOf(pane);
+      if (scene === "moving-page" || scene === "moving-media" || pane.contains(scroller) || scroller.contains(pane)) markPane(pane);
+    });
+  }
 
   /** Mean luminance of the media slice under the pane, or null if it cannot be read. */
   function tileOf(element: Media, content: Box, natural: { w: number; h: number }, slice: Box): Float32Array | null {
@@ -396,20 +430,29 @@ export function startInkSampler(): () => void {
     const panes = Array.from(document.querySelectorAll<HTMLElement>("[data-glass-edge]"));
     if (panes.length === 0) {
       dirty = false;
+      dirtyPanes.clear();
       return;
     }
     const media = Array.from(document.querySelectorAll<Media>("video,img,canvas"));
     // A playing video repaints the backdrop on its own, with no mutation and no scroll to
     // announce it, so it keeps the panes over it dirty for as long as it runs.
     const playing = media.some((element) => element instanceof HTMLVideoElement && !element.paused && element.readyState >= 2 && element.getBoundingClientRect().width > 0);
-    if (!dirty && !playing) return;
+    if (allDirty) {
+      panes.forEach((pane) => dirtyPanes.add(pane));
+      allDirty = false;
+    }
+    const active = panes.filter((pane) => dirtyPanes.has(pane) || (playing && sceneOf(pane) === "moving-media"));
+    if (active.length === 0) {
+      dirty = false;
+      return;
+    }
     readPageLuma();
     const viewport: Box = { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
     const overlay = document.querySelector<HTMLElement>(".video-overlay");
     // Two scenes, each read once for every pane that belongs to it.
     const pageSurfaces = surfacesUnder(null);
     const overlaySurfaces = overlay ? surfacesUnder(overlay) : [];
-    for (const pane of panes) {
+    for (const pane of active) {
       const rect = pane.getBoundingClientRect();
       if (rect.width < 8 || rect.height < 8) continue;
       if (!overlap(rect, viewport)) continue;
@@ -450,15 +493,17 @@ export function startInkSampler(): () => void {
       }
     }
     dirty = false;
+    dirtyPanes.clear();
   }
 
   function schedule() {
     if (!frame) frame = window.requestAnimationFrame(tick);
   }
 
-  const markDirty = () => { dirty = true; };
-  const markMoved = () => { stamp++; dirty = true; };
-  window.addEventListener("scroll", markDirty, { passive: true, capture: true });
+  const markDirty = () => { markAll(); };
+  const onScroll = (event: Event) => { markScroll(event.target); };
+  const markMoved = () => { stamp++; allDirty = true; markAll(); };
+  window.addEventListener("scroll", onScroll, { passive: true, capture: true });
   window.addEventListener("resize", markDirty);
   // A video that stops or jumps leaves a new frame on screen with nothing else to announce it,
   // and an image that arrives after its element was inserted is the same case for a cover or a
@@ -475,7 +520,7 @@ export function startInkSampler(): () => void {
     window.clearInterval(timer);
     if (frame) window.cancelAnimationFrame(frame);
     mutations.disconnect();
-    window.removeEventListener("scroll", markDirty, { capture: true });
+    window.removeEventListener("scroll", onScroll, { capture: true });
     window.removeEventListener("resize", markDirty);
     for (const type of mediaEvents) document.removeEventListener(type, markDirty, true);
     document.querySelectorAll<HTMLElement>("[data-ink]").forEach((element) => {

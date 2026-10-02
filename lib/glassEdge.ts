@@ -55,6 +55,23 @@ export const MAX_EDGE_OFFSET = 48;
 /** Largest rim band the slider can ask for, in CSS px. */
 export const MAX_BAND_PX = 84;
 /**
+ * The seven families a rim can belong to. Each one may carry its own base band/pull, so a card's
+ * bend and a word chip's can be tuned apart from the panes': an element names its family in the
+ * `--glass-group` custom property (the stylesheet sets it on the class lists), and the page hands
+ * the per-group values here through `setGroups`. Anything unnamed, unknown, or without a value
+ * follows the two sliders exactly as before.
+ */
+export type GlassGroup = "pane" | "card" | "button" | "field" | "chip" | "capsule" | "tile";
+export type GlassGroupValues = Partial<Record<GlassGroup, { band: number; pull: number }>>;
+const GLASS_GROUPS: readonly string[] = ["pane", "card", "button", "field", "chip", "capsule", "tile"];
+/** Reads the family off an element's computed style; `--glass-group` inherits, so only a rimmed
+    element's own value is meaningful — an unset one reads as the empty string and follows the
+    sliders. */
+function groupOf(style: CSSStyleDeclaration): GlassGroup | null {
+  const raw = style.getPropertyValue("--glass-group").trim();
+  return GLASS_GROUPS.includes(raw) ? (raw as GlassGroup) : null;
+}
+/**
  * The band never reaches past a pane's midline, so the bend is flat again by the middle whatever
  * the slider says: on a pane shorter than twice the band it is the pane that decides the width.
  */
@@ -197,6 +214,8 @@ function canBendBackdrop() {
 
 type Pane = {
   element: HTMLElement;
+  /** The family whose base band/pull this pane follows, or null for the global sliders. */
+  group: GlassGroup | null;
   filter: SVGFilterElement;
   image: SVGFEImageElement;
   displacement: SVGFEDisplacementMapElement;
@@ -227,6 +246,8 @@ type Pane = {
 export type GlassEdgeHandle = {
   setOffset(next: number): void;
   setRefraction(next: number): void;
+  /** Per-family base band/pull; a group's pane reads these instead of the two sliders. */
+  setGroups(next: GlassGroupValues): void;
   destroy(): void;
 };
 
@@ -243,6 +264,7 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     return {
       setOffset() {},
       setRefraction() {},
+      setGroups() {},
       destroy() { root.classList.remove("glass-rim-fallback"); },
     };
   }
@@ -260,6 +282,8 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
   /** Band width in CSS px, before a pane's own multiplier — an absolute size, not a share. */
   let bandPx = 0;
   /** The corner-radius multiplier as last read: a change to it reshapes every map's corners. */
+  /** The per-family base band/pull the page last handed in; empty = everything follows the sliders. */
+  let groups: GlassGroupValues = {};
   let radiusToken = "";
   let index = 0;
   let frame = 0;
@@ -279,7 +303,8 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
    */
   function applyOptics(pane: Pane) {
     const share = pane.scale > 1 ? BOOSTED_PULL_SHARE : MAX_PULL_SHARE;
-    const pull = Math.min(offset * pane.scale, pane.band * share, pane.pullCap > 0 ? pane.pullCap : Infinity);
+    const base = (pane.group && groups[pane.group]?.pull) ?? offset;
+    const pull = Math.min(base * pane.scale, pane.band * share, pane.pullCap > 0 ? pane.pullCap : Infinity);
     if (pull < 0.5 || pane.band < MIN_BAND) {
       pane.element.style.removeProperty("--glass-edge-filter");
       return;
@@ -311,7 +336,7 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     // stylesheet that moved them at runtime would be asking for a map rebuild nobody announced.
     const style = getComputedStyle(element);
     const cap = (name: string) => { const value = Number.parseFloat(style.getPropertyValue(name)); return Number.isFinite(value) && value > 0 ? value : 0; };
-    const pane: Pane = { element, filter, image, displacement, geometry: "", width: 0, height: 0, band: 0, scale: Math.max(1, scale), bandCap: cap("--glass-band-cap"), pullCap: cap("--glass-pull-cap") };
+    const pane: Pane = { element, group: groupOf(style), filter, image, displacement, geometry: "", width: 0, height: 0, band: 0, scale: Math.max(1, scale), bandCap: cap("--glass-band-cap"), pullCap: cap("--glass-pull-cap") };
     sizes.observe(element);
     applyOptics(pane);
     return pane;
@@ -337,7 +362,8 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     // two rims would otherwise meet. The pane's own multiplier deepens the band and the pull
     // together, so the bend keeps its shape — only reaches further. `--glass-band-cap` is the
     // pane's own ceiling, for a tile the sliders' band would otherwise swallow whole.
-    const band = Math.min(bandPx * pane.scale, Math.min(width, height) * MAX_BAND_SHARE, pane.bandCap > 0 ? pane.bandCap : Infinity);
+    const base = (pane.group && groups[pane.group]?.band) ?? bandPx;
+    const band = Math.min(base * pane.scale, Math.min(width, height) * MAX_BAND_SHARE, pane.bandCap > 0 ? pane.bandCap : Infinity);
     pane.band = band;
     if (width < MIN_PANE || height < MIN_PANE || band < MIN_BAND) {
       pane.geometry = "";
@@ -410,6 +436,15 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
      */
     setRefraction(next: number) {
       bandPx = Math.max(0, Math.min(MAX_BAND_PX, next));
+      panes.forEach((pane) => {
+        measure(pane);
+        applyOptics(pane);
+      });
+    },
+    /** The per-family bases: a pane reads its own family's values instead of the sliders. The
+        band lives inside the map, so this redraws like the refraction slider does. */
+    setGroups(next: GlassGroupValues) {
+      groups = { ...next };
       panes.forEach((pane) => {
         measure(pane);
         applyOptics(pane);

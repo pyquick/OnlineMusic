@@ -1,0 +1,40 @@
+/* ── Liquid glass · per control (Settings) ────────────────────────────────────
+   The live preview for the per-family edge refraction. The stage is deliberately NOT a flat
+   colour: a rim bends what is behind it, and on a solid fill there is nothing to bend — the
+   stripes are the thing the preview's samples displace, at a pitch wide enough to survive the
+   chip-level blur. Each sample names its family in `--glass-group`, the same property the app's
+   controls carry, so what is tuned here is what the studio wears. */
+.lgs-stage{position:relative;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:14px;height:220px;margin:4px 0 14px;padding:14px;border-radius:var(--radius-card);overflow:hidden;border:1px solid var(--line);
+  background:
+    linear-gradient(135deg,rgba(229,72,77,.16),rgba(94,108,196,.20) 52%,rgba(43,180,137,.18)),
+    repeating-linear-gradient(115deg,#fff 0 28px,#c9cede 28px 56px)}
+.lgs-sample{--glass-alpha:var(--material-veil-prominent);
+  display:grid;place-items:center;border:1px solid var(--chip-line);border-radius:var(--radius-control);
+  background:color-mix(in srgb,var(--panel) calc(var(--glass-alpha,1) * 100%),transparent);
+  color:var(--ink);font-size:var(--text-md);font-weight:600;
+  -webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));
+  backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
+/* The families, in the same names the app's class lists carry. */
+.lgs-pane{--glass-group:pane;width:118px;height:64px;border-radius:var(--radius-card)}
+.lgs-card{--glass-group:card;width:132px;height:72px;border-radius:var(--radius-card)}
+.lgs-button{--glass-group:button;width:92px;height:36px;font:inherit;color:var(--ink)}
+.lgs-field{--glass-group:field;width:112px;height:36px;border-radius:var(--radius-control)}
+.lgs-chip{--glass-group:chip;width:74px;height:30px}
+.lgs-capsule{--glass-group:capsule;width:112px;height:38px;border-radius:999px}
+.lgs-tile{--glass-group:tile;width:38px;height:38px;border-radius:var(--radius-pane-chip)}
+/* The rows: name, two compact sliders, and the Follow reset. */
+.lgs-rows{display:flex;flex-direction:column;gap:6px}
+.lgs-row{display:grid;grid-template-columns:88px minmax(0,1fr) minmax(0,1fr) auto;align-items:center;gap:10px}
+.lgs-row.is-own .lgs-name{color:var(--accent-ink);font-weight:700}
+.lgs-name{color:var(--muted);font-size:var(--text-md)}
+.lgs-ctl{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:var(--text-sm)}
+.lgs-ctl input{flex:1;min-width:60px;accent-color:var(--accent)}
+.lgs-ctl b{min-width:40px;color:var(--ink);font:var(--text-sm) var(--font-mono);text-align:right}
+.lgs-follow{padding:5px 10px;font-size:var(--text-sm)}
+.lgs-follow:disabled{opacity:.4;cursor:default}
+@media(max-width:680px){
+  .lgs-row{grid-template-columns:1fr;gap:4px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .lgs-row:last-child{border-bottom:0}
+  .lgs-follow{justify-self:start}
+  .lgs-stage{height:190px;gap:10px}
+}

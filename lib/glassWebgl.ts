@@ -26,7 +26,7 @@
  * reading each pane's veil from the element's own background.
  */
 
-import { MAX_BAND_PX, MAX_EDGE_OFFSET } from "./glassEdge";
+import { MAX_BAND_PX, MAX_EDGE_OFFSET, type GlassGroup, type GlassGroupValues } from "./glassEdge";
 
 /** The band's own cap: the two rims of a short pane must not meet in its middle. */
 const MAX_BAND_SHARE = 0.5;
@@ -92,8 +92,20 @@ export type GlassParameters = {
   radius: number;
 };
 
+/**
+ * The seven families a rim can belong to, read off `--glass-group` exactly as `lib/glassEdge.ts`
+ * reads it, so both engines agree on which base band/pull a pane follows.
+ */
+const GLASS_GROUPS: readonly string[] = ["pane", "card", "button", "field", "chip", "capsule", "tile"];
+function groupOf(style: CSSStyleDeclaration): GlassGroup | null {
+  const raw = style.getPropertyValue("--glass-group").trim();
+  return GLASS_GROUPS.includes(raw) ? (raw as GlassGroup) : null;
+}
+
 export type GlassWebglHandle = {
   setParameters(next: GlassParameters): void;
+  /** Per-family base band/pull; a group's pane reads these instead of the two sliders. */
+  setGroups(next: GlassGroupValues): void;
   /** Force a capture on the next tick — used when the caller knows the page just changed. */
   invalidate(): void;
   /** Redraw at the panes' current boxes without re-rasterising: for panes that moved silently. */
@@ -108,6 +120,8 @@ type Pane = {
   context: CanvasRenderingContext2D | null;
   /** `data-glass-edge` as a number: how much harder this pane reads both sliders. */
   boost: number;
+  /** The family whose base band/pull this pane follows, or null for the global sliders. */
+  group: GlassGroup | null;
   /** The pane's own ceilings in CSS px, from `--glass-band-cap` / `--glass-pull-cap`; 0 = none. */
   bandCap: number;
   pullCap: number;
@@ -482,6 +496,8 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
   const panes = new Map<HTMLElement, Pane>();
   const sizes = new ResizeObserver(() => { measurePanes(); render(); });
   let parameters: GlassParameters = { ...initial };
+  /** The per-family base band/pull the page last handed in; empty = everything follows the sliders. */
+  let groups: GlassGroupValues = {};
   let surface: Surface | null = null;
   let rasterWidth = 0;
   let rasterHeight = 0;
@@ -678,6 +694,7 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
         canvas,
         context: canvas.getContext("2d"),
         boost: Math.max(1, Number(element.dataset.glassEdge) || 1),
+        group: groupOf(style),
         bandCap: cap("--glass-band-cap"),
         pullCap: cap("--glass-pull-cap"),
         x: 0, y: 0, width: 0, height: 0,
@@ -759,10 +776,12 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
       const paneWidth = canvas.width;
       const paneHeight = canvas.height;
       const scale = pane.boost;
-      const band = Math.min(parameters.band * scale * dpr, Math.min(paneWidth, paneHeight) * MAX_BAND_SHARE, pane.bandCap > 0 ? pane.bandCap * dpr : Infinity);
+      const baseBand = (pane.group && groups[pane.group]?.band) ?? parameters.band;
+      const band = Math.min(baseBand * scale * dpr, Math.min(paneWidth, paneHeight) * MAX_BAND_SHARE, pane.bandCap > 0 ? pane.bandCap * dpr : Infinity);
       if (band < MIN_BAND) { clear(); return; }
       const share = scale > 1 ? BOOSTED_PULL_SHARE : MAX_PULL_SHARE;
-      const pull = Math.min(Math.max(0, parameters.offset) * scale * dpr, band * share, pane.pullCap > 0 ? pane.pullCap * dpr : Infinity);
+      const basePull = (pane.group && groups[pane.group]?.pull) ?? Math.max(0, parameters.offset);
+      const pull = Math.min(basePull * scale * dpr, band * share, pane.pullCap > 0 ? pane.pullCap * dpr : Infinity);
       // The blur lives in the raster's texels, which are CSS px wide whatever the screen is.
       const frosted = frost(Math.max(0, parameters.blur) * rasterScale);
 
@@ -1122,6 +1141,11 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
       parameters = { ...next };
       // The material is CSS, and clarity just rewrote it — re-read before the next frame draws.
       panes.forEach((pane) => { Object.assign(pane, paneMaterial(pane.element)); });
+      render();
+    },
+    /** The per-family bases: a pane reads its own family's values instead of the sliders. */
+    setGroups(next: GlassGroupValues) {
+      groups = { ...next };
       render();
     },
     invalidate() { requestCapture(); },
