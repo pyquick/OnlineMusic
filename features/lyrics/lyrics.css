@@ -60,17 +60,17 @@
 .lxe-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,34vw,460px);gap:18px;padding:14px 0 16px}
 .lxe-editor{min-height:0;overflow-y:auto;display:flex;flex-direction:column}
 .lxe-side{min-height:0;display:flex;flex-direction:column;gap:12px}
-.lxe-transport{flex:none;display:flex;flex-direction:column;gap:12px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--lxe-field)}
+.lxe-transport{flex:none;display:flex;flex-direction:column;gap:12px;padding:14px;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--lxe-field);box-shadow:var(--shadow)}
 .lxe-transport-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 /* The studio's slider primitive has no display of its own; in a card it is a block. */
 .lxe-side .range-control{display:block}
 .lxe-clock{color:var(--muted);font:var(--text-lg) var(--font-mono)}
 .lxe-offset{display:flex;align-items:center;gap:8px}
 .lxe-offset label{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:var(--text-md)}
-.lxe-offset input,.lxe-time-input,.lxe-token-text{width:78px;padding:6px 8px;border-radius:9px;border:1px solid var(--line);background:var(--lxe-field);color:var(--ink);font:var(--text-md) var(--font-mono)}
+.lxe-offset input,.lxe-time-input,.lxe-token-text{width:78px;padding:6px 8px;border-radius:var(--radius-control);border:1px solid var(--line);background:var(--lxe-field);color:var(--ink);font:var(--text-md) var(--font-mono)}
 .lxe-keys{margin:0;color:var(--muted);font-size:var(--text-md);text-align:center}
 .lxe-rows{display:flex;flex-direction:column;gap:12px;padding:0 2px 18px}
-.lxe-row{border:1px solid var(--line);border-radius:16px;padding:12px 14px}
+.lxe-row{border:1px solid var(--line);border-radius:var(--radius-card);padding:12px 14px}
 .lxe-row.is-selected{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
 .lxe-row-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .lxe-index{width:26px;color:var(--muted);font:var(--text-md) var(--font-mono);text-align:right}
@@ -81,13 +81,13 @@
 .lxe-row-tools button.is-danger:hover,.lxe-token-edit button.is-danger:hover{color:#fff;background:var(--accent);border-color:var(--accent)}
 .lxe-fields{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:12px;margin-top:10px}
 .lxe-fields label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:var(--text-md)}
-.lxe-fields input{padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--lxe-field);color:var(--ink);font-size:15px;font-weight:600}
-.lxe-track{position:relative;height:26px;margin-top:10px;border-radius:9px;cursor:pointer;touch-action:none;
+.lxe-fields input{padding:9px 11px;border-radius:var(--radius-control);border:1px solid var(--line);background:var(--lxe-field);color:var(--ink);font-size:15px;font-weight:600}
+.lxe-track{position:relative;height:26px;margin-top:10px;border-radius:var(--radius-control);cursor:pointer;touch-action:none;
   background:var(--lxe-field);border:1px solid var(--line)}
 .lxe-track.is-untimed{cursor:default}
 /* The span's own edges are its drag handles: the borders are hit, the fill is the body. */
 .lxe-span{position:absolute;top:2px;bottom:2px;min-width:4px;border-radius:4px;background:color-mix(in srgb,var(--accent) 40%,transparent);border-left:4px solid var(--accent);border-right:4px solid var(--accent);cursor:grab}
-.lxe-tip{position:absolute;top:-24px;transform:translateX(-50%);padding:2px 7px;border-radius:7px;background:var(--ink);color:var(--panel);font:var(--text-sm) var(--font-mono);pointer-events:none}
+.lxe-tip{position:absolute;top:-24px;transform:translateX(-50%);padding:2px 7px;border-radius:var(--radius-control);background:var(--ink);color:var(--panel);font:var(--text-sm) var(--font-mono);pointer-events:none}
 .lxe-tip:empty{display:none}
 .lxe-track-hint{position:absolute;inset:0;display:grid;place-content:center;color:var(--muted);font-size:var(--text-md);pointer-events:none}
 /* The words are nested under the sentence they belong to: a labelled group with a rule down its
@@ -97,7 +97,7 @@
 .lxe-words .eyebrow{margin-bottom:7px}
 .lxe-words-hint{margin:0;color:var(--muted);font-size:var(--text-md)}
 .lxe-tokens{display:flex;flex-wrap:wrap;gap:6px}
-.lxe-chip{display:inline-flex;align-items:baseline;gap:7px;padding:5px 9px;border-radius:9px;border:1px solid var(--line);background:none;color:var(--ink)}
+.lxe-chip{display:inline-flex;align-items:baseline;gap:7px;padding:5px 9px;border-radius:var(--radius-control);border:1px solid var(--line);background:none;color:var(--ink)}
 .lxe-chip b{font-weight:600}
 .lxe-chip small{color:var(--muted);font:var(--text-xs) var(--font-mono)}
 .lxe-chip.is-selected{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
@@ -110,7 +110,7 @@
    because it is being edited. It takes whatever height the column has left, never less than its
    floor. */
 .lxe-preview{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--line)}
-.lxe-preview-stage{flex:1;min-height:120px;border-radius:16px;overflow:hidden;padding:14px 18px;background:linear-gradient(165deg,#16171f,#0b0c13 58%,#07080d)}
+.lxe-preview-stage{flex:1;min-height:120px;border-radius:var(--radius-card);overflow:hidden;padding:14px 18px;background:linear-gradient(165deg,#16171f,#0b0c13 58%,#07080d)}
 .lyr--preview{height:100%}
 .lxe-confirm-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
 /* One column: the words and the tape step up (they are what the eye checks while timing), the
@@ -125,4 +125,23 @@
   .lxe-fields{grid-template-columns:1fr}
   .lxe-head{flex-wrap:wrap}
   .lxe-actions{margin-left:0;flex-wrap:wrap}
+}
+
+/* The editor's own press language on top of the page's: a word chip presses like every other
+   control, and an unselected one takes the same translucent wash on hover. The row tools and the
+   Back/Save buttons are the page's own `.small-action`/`.ghost-button`/`.primary-button` classes,
+   so they already carry it. */
+.lxe-chip{transition:background-color var(--dur-fast) ease,border-color var(--dur-fast) ease,color var(--dur-fast) ease,translate var(--dur-mid) var(--ease-pop),scale var(--dur-mid) var(--ease-pop)}
+.lxe-chip:not(.is-selected):hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.lxe-chip:active{scale:.97}
+/* Touch: under a coarse pointer the editor's controls grow to a finger's size — chips, time
+   fields, row tools, the head's icon buttons, the sentence track — while a fine pointer keeps the
+   dense desktop layout. No type grows or shrinks with them. */
+@media(pointer:coarse){
+  .lxe-chip{min-height:40px;align-items:center}
+  .lxe-time-input,.lxe-token-text,.lxe-offset input{min-height:40px}
+  .lxe-fields input{min-height:44px}
+  .lxe-row-tools button,.lxe-token-edit button{padding:10px 12px;min-height:40px}
+  .lxe-head .icon-button{min-width:40px;min-height:40px}
+  .lxe-track{height:34px}
 }
