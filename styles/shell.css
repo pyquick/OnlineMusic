@@ -28,9 +28,9 @@
    Pressed, the veil lets go and the glass comes up: the capsule fades from that half-transparent
    tint to fully clear while the rim bend arrives with it, over the same transition, so the change
    reads as one thing rather than a switch, and the lit hairline and the bevel above give the
-   result its body. The bend is held to this tile's own ceiling (`--glass-band-cap` /
-   `--glass-pull-cap`): a capsule this short cannot wear the band the sliders give the tall panes
-   without the whole tile turning into rim. Both edges of both axes bend — the map carries the
+   result its body. The tile is short, so the engine's own geometry holds the band to half its
+   short side; beyond that there is no ceiling of its own any more (2026-10-01: "既然有滚动条,
+   则去掉之前所有强加的折射范围") — the Capsule family's sliders in Appearance rule it. Both edges of both axes bend — the map carries the
    horizontal pull in R and the vertical in G, so the top and bottom rims refract exactly as the
    left and right ones do.
    Its horizontal travel is not a CSS transition at all: `--bubble-x` is written every frame by the
@@ -46,8 +46,6 @@
   /* Below the pill's own veil, so the capsule reads as a clearer window in it rather than a
      second coat of the same white. The Clarity slider moves both. */
   --glass-alpha:var(--material-veil-prominent);
-  --glass-band-cap:22px;
-  --glass-pull-cap:15px;
   -webkit-backdrop-filter:saturate(170%);
   backdrop-filter:saturate(170%);
   box-shadow:0 8px 18px rgba(20,22,36,.16),0 1px 3px rgba(20,22,36,.1);

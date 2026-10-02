@@ -117,18 +117,16 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
         <div className="settings-page-body">
           <RangeControl label="Blur" value={blur} min={0} max={MAX_GLASS_BLUR} step={GLASS_BLUR_STEP} display={`${blur}px`} onChange={onBlur} />
           <RangeControl label="Clarity" value={clarity} min={0} max={100} display={`${clarity}%`} onChange={onClarity} />
-          <RangeControl label="Edge distortion" value={edge} min={0} max={MAX_EDGE_OFFSET} display={`${edge}px`} onChange={onEdge} />
-          <RangeControl label="Edge refraction" value={refraction} min={0} max={MAX_BAND_PX} display={`${refraction}px`} onChange={onRefraction} />
           <RangeControl label="Corner radius" value={radius} min={50} max={150} display={`${radius}%`} onChange={onRadius} />
-          <p className="settings-hint">Blur frosts what sits behind a pane and clarity is how much of it shows through. Edge distortion is how hard the rim bends the backdrop, edge refraction how far in that bend reaches. All five apply live and are saved in this browser.</p>
+          <p className="settings-hint">Blur frosts what sits behind a pane and clarity is how much of it shows through; both apply live and are saved in this browser. Edge distortion and edge refraction now live per family, in the card below.</p>
         </div>
       </div>
 
       <div className="settings-card panel" data-glass-edge="">
         <div className="panel-title"><h3>Liquid glass · per control</h3></div>
         <div className="settings-page-body">
-          <p className="settings-hint">Each family of controls can bend its own edges. The preview sits on stripes — a flat colour has nothing for a rim to bend — and answers every slider live. A family left on “Follow” reads the two sliders above.</p>
-          <div className="lgs-stage" data-glass-edge="3" aria-hidden="true">
+          <p className="settings-hint">Every family carries its own edge distortion (how hard the rim bends the backdrop) and edge refraction (how far in the bend reaches). The preview sits on stripes — a flat colour has nothing for a rim to bend — and answers every slider live. “Reset” returns a family to the studio defaults.</p>
+          <div className="lgs-stage" data-glass-edge="" aria-hidden="true">
             <span className="lgs-sample lgs-pane" data-glass-edge="">Panel</span>
             <span className="lgs-sample lgs-card" data-glass-edge="">Card</span>
             <button className="lgs-sample lgs-button" data-glass-edge="" type="button" tabIndex={-1}>Button</button>
@@ -154,7 +152,7 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
                     <input type="range" min={0} max={MAX_EDGE_OFFSET} value={pull} onChange={(event) => set({ pull: Number(event.target.value) })} />
                     <b>{pull}px</b>
                   </label>
-                  <button className="ghost-button lgs-follow" type="button" disabled={!own} onClick={() => { const next = { ...groups }; delete next[family.id]; onGroups(next); }}>Follow</button>
+                  <button className="ghost-button lgs-follow" type="button" disabled={!own} onClick={() => { const next = { ...groups }; delete next[family.id]; onGroups(next); }}>Reset</button>
                 </div>
               );
             })}

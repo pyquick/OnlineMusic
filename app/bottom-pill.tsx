@@ -434,11 +434,10 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange, on
         ref={bubbleRef}
         className={`pill-bubble ${bubble.raised ? "is-raised" : ""} ${bubble.dragging ? "is-dragging" : ""} ${bubble.travelling ? "is-travelling" : ""}`}
         aria-hidden="true"
-        // The bend is asked for at the tile's own ceiling, and the boost is what gets it there: a
-        // capsule 60px tall bends across 30px — half its short side is as deep as any rim may
-        // reach — and the pull rides at the boosted cap that goes with it. Anything less and a
-        // tile this small would only ever show a hint of what the tall panes show.
-        data-glass-edge="12"
+        // No boost and no ceiling of its own: the capsule reads the Capsule family's sliders in
+        // Appearance at face value, and the engine's own geometry — half the short side is as deep
+        // as any band may reach — is what keeps a tile this small from turning into pure rim.
+        data-glass-edge=""
         data-glass-scene="nested-host"
         // --bubble-x is written by the spring, frame by frame; React only owns the width.
         style={{ "--bubble-w": `${bubble.width}px` } as CSSProperties}
