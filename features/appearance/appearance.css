@@ -30,11 +30,8 @@
 .lgs-ctl{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:var(--text-sm)}
 .lgs-ctl input{flex:1;min-width:60px;accent-color:var(--accent)}
 .lgs-ctl b{min-width:40px;color:var(--ink);font:var(--text-sm) var(--font-mono);text-align:right}
-.lgs-follow{padding:5px 10px;font-size:var(--text-sm)}
-.lgs-follow:disabled{opacity:.4;cursor:default}
 @media(max-width:680px){
   .lgs-row{grid-template-columns:1fr;gap:4px;padding:8px 0;border-bottom:1px dashed var(--line)}
   .lgs-row:last-child{border-bottom:0}
-  .lgs-follow{justify-self:start}
   .lgs-stage{height:190px;gap:10px}
 }

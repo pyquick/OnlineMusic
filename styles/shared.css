@@ -397,6 +397,12 @@
 .bar-cluster{gap:8px}
 /* Small frosted tiles on top of the bar's own frost: a lighter tint, a tighter blur, and the
    state fills applied straight to the button (the icon is in-flow content and always paints above). */
+/* The segmented and tab buttons are glass too, now that every control carries a rim. */
+:is(.segmented button,.auth-tabs button){--glass-group:button;
+  background:color-mix(in srgb,var(--ink) 5%,transparent);
+  -webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));
+  backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
+:is(.segmented button.is-on,.auth-tabs button.active){background:color-mix(in srgb,var(--panel) calc(var(--glass-alpha,1) * 100%),transparent)}
 /* The small controls wear the studio's glass too (2026-10-01): a translucent surface — an opaque
    fill has nothing behind it for a rim to bend — and the engines' edge filter in their own
    backdrop, at the chip's blur rather than the pane's, so a 30px button does not pay for a 12px

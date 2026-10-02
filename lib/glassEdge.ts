@@ -51,7 +51,7 @@
  */
 
 /** Largest rim pull the slider can ask for, in CSS px. */
-export const MAX_EDGE_OFFSET = 48;
+export const MAX_EDGE_OFFSET = 84;
 /** Largest rim band the slider can ask for, in CSS px. */
 export const MAX_BAND_PX = 84;
 /**
@@ -81,7 +81,11 @@ const MAX_BAND_SHARE = 0.5;
  * position across the band stops rising and folds, which reads as the interior appearing at
  * the edge; 0.30 keeps the slope positive where the dome is steepest without giving up reach.
  */
-const MAX_PULL_SHARE = 0.3;
+// The pull used to be held to 30% of the band so the sample never left the glass the band covers.
+// The user lifted that (2026-10-01, "让它们(所有控件)的折射最高均能到84PX"): the strength slider
+// reaches 84px on every control, and the only ceiling left is the band itself — the bend reads to
+// the band's inner edge and no further, which is the geometry of the map, not a policy.
+const MAX_PULL_SHARE = 1;
 /**
  * And the share for a *boosted* pane — one that already reads the sliders at a multiple
  * (`data-glass-edge` above 1, which only the player bar sets). Such a pane is exactly the short

@@ -79,9 +79,9 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
         <div className="panel-title"><h3>Background</h3></div>
         <div className="settings-page-body">
           <div className="segmented">
-            <button className={appearance.bgKind === "preset" ? "is-on" : ""} onClick={() => onAppearance({ bgKind: "preset", shellLuma: SOLID_PRESETS.find((preset) => preset.id === appearance.bgPreset)?.luma ?? 0.96 })}>Solid</button>
-            <button className={appearance.bgKind === "gradient" ? "is-on" : ""} onClick={() => onAppearance({ bgKind: "gradient", shellLuma: GRADIENT_PRESETS.find((preset) => preset.id === appearance.bgGradient)?.luma ?? 0.96 })}>Gradient</button>
-            <button className={appearance.bgKind === "image" ? "is-on" : ""} onClick={() => onAppearance({ bgKind: "image", shellLuma: appearance.bgImage ? appearance.shellLuma : 0.96 })}>Image</button>
+            <button data-glass-edge="" className={appearance.bgKind === "preset" ? "is-on" : ""} onClick={() => onAppearance({ bgKind: "preset", shellLuma: SOLID_PRESETS.find((preset) => preset.id === appearance.bgPreset)?.luma ?? 0.96 })}>Solid</button>
+            <button data-glass-edge="" className={appearance.bgKind === "gradient" ? "is-on" : ""} onClick={() => onAppearance({ bgKind: "gradient", shellLuma: GRADIENT_PRESETS.find((preset) => preset.id === appearance.bgGradient)?.luma ?? 0.96 })}>Gradient</button>
+            <button data-glass-edge="" className={appearance.bgKind === "image" ? "is-on" : ""} onClick={() => onAppearance({ bgKind: "image", shellLuma: appearance.bgImage ? appearance.shellLuma : 0.96 })}>Image</button>
           </div>
           {appearance.bgKind === "preset" && (
             <div className="swatch-row">
@@ -125,7 +125,7 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
       <div className="settings-card panel" data-glass-edge="">
         <div className="panel-title"><h3>Liquid glass · per control</h3></div>
         <div className="settings-page-body">
-          <p className="settings-hint">Every family carries its own edge distortion (how hard the rim bends the backdrop) and edge refraction (how far in the bend reaches). The preview sits on stripes — a flat colour has nothing for a rim to bend — and answers every slider live. “Reset” returns a family to the studio defaults.</p>
+          <p className="settings-hint">Every family carries its own edge distortion (how hard the rim bends the backdrop) and edge refraction (how far in the bend reaches). The preview sits on stripes — a flat colour has nothing for a rim to bend — and answers every slider live.</p>
           <div className="lgs-stage" data-glass-edge="" aria-hidden="true">
             <span className="lgs-sample lgs-pane" data-glass-edge="">Panel</span>
             <span className="lgs-sample lgs-card" data-glass-edge="">Card</span>
@@ -152,7 +152,6 @@ export default function AppearanceSettings({ blur, onBlur, clarity, onClarity, e
                     <input type="range" min={0} max={MAX_EDGE_OFFSET} value={pull} onChange={(event) => set({ pull: Number(event.target.value) })} />
                     <b>{pull}px</b>
                   </label>
-                  <button className="ghost-button lgs-follow" type="button" disabled={!own} onClick={() => { const next = { ...groups }; delete next[family.id]; onGroups(next); }}>Reset</button>
                 </div>
               );
             })}
