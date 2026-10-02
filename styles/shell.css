@@ -1,0 +1,153 @@
+/* ── The shell: the small screen's navigation and frame ───────────────────────
+   The pill, the compact shell's paddings, the bar's artwork tile and the phone's top bar.
+   Imported after shared.css (see the order contract there). */
+/* ── The small screen's navigation ───────────────────────────────────────────
+   Below 680px the sidebar is not rendered at all: these five items are the whole of the
+   navigation, and the pill floats at the foot of the screen with the player bar above it. */
+@keyframes pill-in{from{translate:0 22px}to{translate:0 0}}
+/* The browser's own touch feedback is turned off here: on Android the tap highlight is a band of
+   pale blue painted over whatever was touched, and on the capsule's spot it reads as a foreign
+   rectangle rather than as the glass. The pill answers a press with the raised capsule instead.
+   (The property inherits, so the items and their glyphs are covered too.) */
+.bottom-pill{position:fixed;z-index:var(--z-float);left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);height:var(--pill-h,64px);display:flex;align-items:stretch;padding:6px;border-radius:999px;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;animation:pill-in .3s var(--ease-glass) both}
+/* The item itself is not a run — its icon is an SVG and its words live in a child span — so it
+   wears the mix the pane carries for exactly that case: the glyphs and the words under them stay
+   one colour however dark or light the glass under the pill goes. */
+.pill-item{position:relative;z-index:1;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 2px;border-radius:999px;background:none;--ink-base:#000;--ink-top:#fff;color:color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base));font-size:10.5px;transition:color .2s}
+/* The keyboard's ring, in the studio's own accent rather than the browser's default blue — the
+   same ring the bar's cover and the waveform wear. A pointer never leaves one behind: the pill
+   clears the focus a press hands its tile. */
+.pill-item:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.bottom-pill .pill-item:hover{background:none;box-shadow:none;transform:none;scale:1}
+.pill-icon{display:grid;place-items:center;height:20px}
+.pill-label{line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.pill-count{position:absolute;top:4px;left:50%;translate:14px 0;font:9px var(--font-sans);font-variant-numeric:tabular-nums;color:var(--ink-soft,#9da3b5)}
+/* The bubble has two faces, and a hover moves neither of them. At rest it is the capsule the
+   current item wears: semi-transparent — its clarity is what Settings says — and with no frost of
+   its own, so the pill's own content stays as sharp as it was; nothing is drawn along its edge.
+   Pressed, the veil lets go and the glass comes up: the capsule fades from that half-transparent
+   tint to fully clear while the rim bend arrives with it, over the same transition, so the change
+   reads as one thing rather than a switch, and the lit hairline and the bevel above give the
+   result its body. The bend is held to this tile's own ceiling (`--glass-band-cap` /
+   `--glass-pull-cap`): a capsule this short cannot wear the band the sliders give the tall panes
+   without the whole tile turning into rim. Both edges of both axes bend — the map carries the
+   horizontal pull in R and the vertical in G, so the top and bottom rims refract exactly as the
+   left and right ones do.
+   Its horizontal travel is not a CSS transition at all: `--bubble-x` is written every frame by the
+   pill's own spring (app/bottom-pill.tsx), which is what lets a press take the glass hold of
+   rather than teleport it. This list carries the rest of its geometry and its material.
+   The same loop writes the liquid: `--bubble-swell` is the trip's envelope (the capsule grown
+   around its own middle — 1 when there is no trip) and `--bubble-sx`/`--bubble-sy` are the lean
+   into its own speed, wider along the travel and a little flatter across it. One transform
+   composes them; the `scale` property stays free for the press. */
+.pill-bubble{position:absolute;z-index:0;left:0;top:5px;bottom:5px;width:var(--bubble-w,0px);border-radius:999px;
+  translate:var(--bubble-x,0px) 0;pointer-events:none;
+  transform:scaleX(calc(var(--bubble-sx,1) * var(--bubble-swell,1))) scaleY(calc(var(--bubble-sy,1) * var(--bubble-swell,1)));
+  /* Below the pill's own veil, so the capsule reads as a clearer window in it rather than a
+     second coat of the same white. The Clarity slider moves both. */
+  --glass-alpha:var(--material-veil-prominent);
+  --glass-band-cap:22px;
+  --glass-pull-cap:15px;
+  -webkit-backdrop-filter:saturate(170%);
+  backdrop-filter:saturate(170%);
+  box-shadow:0 8px 18px rgba(20,22,36,.16),0 1px 3px rgba(20,22,36,.1);
+  transition:width .28s var(--ease-glass),top .22s var(--ease-glass),bottom .22s var(--ease-glass),scale .22s var(--ease-glass),background-color .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}
+/* Raised, the veil is gone and the frost and the bend have arrived: the capsule is clear glass
+   over the pill, its rim bending the icons and labels it is covering — the same map and the same
+   Settings every pane's edge is built from, held to this tile's own 22px/15px ceiling. */
+/* Pressed it also grows, as one piece: a straight scale keeps a capsule's proportions and its
+   radius, and what it buys is the overhang — about 3px of glass past the pill on every side,
+   which is what reads as the capsule having been picked up rather than merely recoloured. */
+/* Pressed, it is glass and nothing else: the veil is gone, and so is any frost of its own — the
+   Blur and Clarity sliders do not reach this state, so what shows through is exactly what is
+   behind it, bent by the rim. What gives it a body instead of a flat wash is the light: a lit
+   hairline down the left edge, fading to the right (the rule above), over a bright top-left inset
+   and the same bevel the panes wear, which shades the lower edge and reads as thickness.
+   The liquid trip wears the same glass without being pressed: a tap on another item swells the
+   capsule into this and carries it across (`--bubble-swell`), so the two states share one rule —
+   only the press's own geometry (filling the pill, its scale) belongs to it alone. */
+.pill-bubble.is-raised,.pill-bubble.is-travelling{--glass-alpha:0;z-index:2;
+  -webkit-backdrop-filter:saturate(200%);
+  backdrop-filter:saturate(200%) var(--glass-edge-filter,saturate(100%));
+  box-shadow:0 12px 26px rgba(20,22,36,.24),0 2px 6px rgba(20,22,36,.16),inset 1px 1px 0 rgba(255,255,255,.65),inset -1px -1px 0 rgba(255,255,255,.2),var(--glass-bevel)}
+.pill-bubble.is-raised{top:1px;bottom:1px;scale:1.12}
+/* No stroke along the resting capsule — but the ring comes back the moment it is picked up (the
+   `:where()` keeps this rule at zero specificity, so the lit hairline above wins as soon as the
+   bubble is raised or on its liquid trip). That edge light, bright down the left and fading to
+   the right, is most of what makes the glass read as a solid object rather than a wash. */
+:where(.pill-bubble)::after{content:none}
+/* While the finger is carrying it, the width changes without its usual transition — the position
+   is the spring's business in both states. The material still fades on its own clock, so the list
+   keeps those terms rather than dropping the whole transition (which is what used to make the
+   fade snap). */
+.pill-bubble.is-dragging{transition:top .22s var(--ease-glass),bottom .22s var(--ease-glass),scale .22s var(--ease-glass),background-color .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}
+
+/* ── The small-screen shell ──────────────────────────────────────────────────
+   The sidebar is not rendered at all below 680px — the pill above is the navigation — and the
+   bar above the pill keeps only its play button, its song and its next-track button, as a
+   smaller, rounder pill than the desktop bar's. */
+@media(max-width:680px){
+  .sidebar{display:none}
+  .menu-button{display:none!important}
+  .studio-shell{padding-bottom:calc(var(--pill-h,64px) + 96px)}
+  .page-content{padding:32px 18px 178px}
+  /* The three right-hand buttons stay on the desktop bar at every width — the promise they were
+     given — but a phone has no room for them, and nothing brings them back. */
+  .player.glass-bar .player-actions,
+  .player.glass-bar .transport-extra,
+  .player.glass-bar .transport-step[aria-label="Previous song"],
+  .player.glass-bar .progress-wrap,
+  .player.glass-bar .now-playing-copy small{display:none!important}
+  .player.glass-bar{bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 18px);width:calc(100% - 20px);min-height:0;padding:8px 14px;border-radius:999px;grid-template-columns:minmax(0,1fr) auto;gap:12px}
+  .player.glass-bar .player-controls{gap:8px}
+  .player.glass-bar .mini-cover{width:42px;height:42px;border-radius:14px}
+  .player.glass-bar .player-button svg{width:24px;height:24px}
+  /* The sheets hang above the bar, and the bar is above the pill. */
+  .lyrics-panel{bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 86px)}
+  .projects-panel{right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 86px);width:calc(100vw - 20px)}
+  .video-overlay .video-player-dock{bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 18px)}
+}
+
+
+/* ── The bar's artwork tile ──────────────────────────────────────────────────
+   The tile is the song's cover when there is one, and a kind glyph when there is
+   not - never a monogram. Hovering it promises the full window: the expand glyph
+   fades in over the artwork, and a click opens the now-playing view. The promise
+   holds whether or not anything is playing, so the studio's empty tile opens the
+   same window onto its queue rather than sitting inert. */
+.mini-cover img{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
+.mini-cover-button{flex:none;display:block;padding:0;border-radius:11px;background:none;cursor:pointer}
+.mini-cover-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.mini-cover-expand{position:absolute;inset:0;display:grid;place-items:center;border-radius:inherit;background:rgba(20,22,34,.5);color:#fff;opacity:0;transition:opacity .2s ease}
+.mini-cover-button:focus-visible .mini-cover-expand{opacity:1}
+
+/* The play/pause is a solid glyph, not a filled disc: no chrome of its own, and
+   nothing changes under the pointer. It is scoped to the bar so the video dock's
+   own purple button keeps its look. */
+.glass-bar .player-button{width:auto;height:auto;padding:5px;border-radius:0;background:none;box-shadow:none;color:var(--ink)}
+.glass-bar .player-button:disabled{opacity:.3}
+/* Step and mode buttons: plain icons beside the glyph. Shuffle and repeat are
+   only offered when the list holds more than one audio file, and they light up
+   in the studio's purple while they are on. */
+.transport-step,.transport-extra{display:grid;place-items:center;padding:4px;border-radius:9px;background:none;color:var(--ink);transition:color .18s ease}
+.transport-step:disabled,.transport-extra:disabled{opacity:.28;cursor:default}
+.transport-extra{color:var(--muted)}
+.transport-extra.is-on{color:var(--accent)}
+
+/* ── The phone's top bar ─────────────────────────────────────────────────────
+   Not the wide layout's capsule: a slab glued to a 390px window would only eat the page, and
+   the navigation is the pill at the foot. What the top keeps is a haze. The bar stays where it
+   is while the page runs under it, two pixels of blur go over whatever is passing, and that
+   blur fades out on its way down — the page dissolves into the bar instead of being cut off by
+   it. Two pixels, always, and never var(--glass-blur): the frost dials in Settings belong to
+   the glass panes, and the edge of the window is not one of them. */
+@media(max-width:680px){
+  .studio-shell .topbar{position:sticky;top:0;border-bottom:0;background:none;box-shadow:none;
+    -webkit-backdrop-filter:none;backdrop-filter:none}
+  /* Neither the pane's hairline ring nor its bevel: there is no pane here to carry them. */
+  .studio-shell .topbar::after{content:none}
+  .studio-shell .topbar::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:0;box-shadow:none;
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+    -webkit-mask-image:linear-gradient(to bottom,#000 0 46%,#0000 100%);
+    mask-image:linear-gradient(to bottom,#000 0 46%,#0000 100%)}
+}

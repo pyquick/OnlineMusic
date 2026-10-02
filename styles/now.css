@@ -1,0 +1,192 @@
+/* ── Now playing ──────────────────────────────────────────────────────────────
+   The full-window player and the phone's full-screen player inside it.
+   Imported after shared.css and shell.css (see the order contract there). */
+/* ── Now playing, full window ────────────────────────────────────────────────
+   Not the browser's fullscreen: a surface inside the app, painted with the
+   artwork's own colour - sampled by the page - over a near-black base, and the
+   studio's purple when the song has no cover. The stage is centred on the left,
+   the songs that come next stand on the right. */
+.now-view{position:fixed;inset:0;z-index:var(--z-now);display:flex;flex-direction:column;padding:20px clamp(20px,4vw,54px) 28px;overflow:hidden;overscroll-behavior:contain;animation:now-rise .26s var(--ease-rise) both}
+/* The fullscreen player rises from the foot of the screen and, on the way out, falls back
+   through it. translate only, never opacity: the now view carries the glass queue sheet,
+   and an opacity on this ancestor would make it a backdrop root and put its frost out. */
+@keyframes now-rise{from{translate:0 102%}to{translate:0 0}}
+@keyframes now-fall{from{translate:0 0}to{translate:0 102%}}
+.now-view.is-closing{animation:now-fall .22s var(--ease-fall) both}
+.video-overlay{animation:now-rise .26s var(--ease-rise) both}
+@keyframes now-in{from{opacity:0;scale:.985}to{opacity:1;scale:1}}
+.now-backdrop{position:absolute;inset:0;background:radial-gradient(115% 80% at 14% -6%,rgba(var(--np-tint,229 72 77) / .62),rgba(var(--np-tint,229 72 77) / .2) 40%,rgba(8,9,15,0) 70%),radial-gradient(95% 65% at 52% 118%,rgba(var(--np-tint,229 72 77) / .3),rgba(8,9,15,0) 62%),linear-gradient(165deg,#16171f,#0b0c13 58%,#07080d)}
+.now-head{position:relative;display:flex;align-items:center;gap:14px;flex:none}
+.now-close{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.14);color:#fff;transition:background .2s ease}
+.now-close:hover{background:rgba(255,255,255,.26)}
+.now-kicker{margin:0;color:rgba(255,255,255,.6);font:500 var(--text-xs) var(--font-mono);letter-spacing:.14em;text-transform:uppercase}
+/* Volume, wearing the bar's own state at the top-right of the window: the pill the reference shows —
+   a wide track with a tall white knob and the speaker at its end, the level ticked off at the left
+   hairline. It frosts what is behind it like every other surface, and its speaker mutes and restores. */
+.now-volume{margin-left:auto;display:flex;align-items:center;gap:12px;height:44px;padding:0 12px 0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.12);box-shadow:inset 1px 0 0 rgba(255,255,255,.34),inset 0 1px 0 rgba(255,255,255,.28);-webkit-backdrop-filter:blur(var(--material-blur-dock)) saturate(var(--material-saturate-floating));backdrop-filter:blur(var(--material-blur-dock)) saturate(var(--material-saturate-floating)) var(--glass-edge-filter,saturate(100%))}
+.now-volume input{width:clamp(96px,17vw,186px);height:26px;margin:0;appearance:none;-webkit-appearance:none;background:none;cursor:pointer;color:#fff}
+.now-volume input::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(to right,currentColor var(--seek,0%),rgba(255,255,255,.26) var(--seek,0%))}
+.now-volume input::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:26px;margin-top:-10px;border-radius:8px;background:#fff;box-shadow:0 2px 7px rgba(4,5,12,.5)}
+.now-volume input::-moz-range-track{height:6px;border-radius:999px;background:rgba(255,255,255,.26)}
+.now-volume input::-moz-range-progress{height:6px;border-radius:999px;background:#fff}
+.now-volume input::-moz-range-thumb{width:15px;height:26px;border:0;border-radius:8px;background:#fff;box-shadow:0 2px 7px rgba(4,5,12,.5)}
+.now-volume-icon{display:grid;place-items:center;padding:2px;background:none;color:rgba(255,255,255,.86);transition:color .18s ease}
+.now-volume-icon:hover{color:#fff}
+@media(max-width:680px){.now-volume input{width:84px}}
+.now-body{position:relative;flex:1;min-height:0;margin-top:clamp(8px,2.6vh,30px);display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:clamp(22px,4vw,58px);align-items:center;transition:grid-template-columns .38s var(--ease-glass),gap .38s var(--ease-glass)}
+/* The right column is the corner switch's disclosure, not a fixture: closed it takes no width at
+   all, so the stage — and the transport at its centre — stands in the middle of the window. */
+.now-body.is-drawer-closed{grid-template-columns:minmax(0,1fr) minmax(0,0px);gap:0}
+.now-drawer{position:relative;min-width:0;align-self:stretch;display:flex;flex-direction:column;justify-content:center}
+.now-stage{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(12px,2.2vh,24px);text-align:center}
+.now-art{width:min(42vh,420px);max-width:100%;aspect-ratio:1/1;border-radius:22px;overflow:hidden;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#e5484d,#8f2027);box-shadow:0 38px 74px rgba(4,5,12,.55),0 3px 10px rgba(4,5,12,.4)}
+.now-art.is-empty{background:linear-gradient(135deg,rgba(255,255,255,.18),rgba(255,255,255,.05));color:rgba(255,255,255,.72)}
+.now-art img{width:100%;height:100%;object-fit:cover;display:block}
+.now-art-wrap{position:relative}
+.now-titles{max-width:min(560px,100%)}
+.now-titles h2{margin:0;color:#fff;font:600 clamp(23px,3.2vw,38px) var(--font-sans);letter-spacing:-.05em}
+.now-progress{flex:0 0 auto;width:min(600px,100%);color:rgba(255,255,255,.66)}
+.now-progress input{color:#fff}
+.now-transport{display:flex;align-items:center;justify-content:center;gap:clamp(12px,3vw,32px);padding-top:2px}
+.now-transport button{display:grid;place-items:center;padding:6px;background:none;color:rgba(255,255,255,.82);transition:color .18s ease,transform .18s ease}
+.now-transport button:hover:not(:disabled):not(.now-play){color:#fff;transform:scale(1.07)}
+.now-transport button:disabled{opacity:.3;cursor:default}
+.now-transport .now-play{width:min(74px,15vh);height:min(74px,15vh);padding:0;border-radius:50%;background:#fff;color:#12141d;box-shadow:0 16px 32px rgba(4,5,12,.45)}
+/* The disc is already white, so the row's hover colour would paint its glyph white on white and
+   leave a blank circle; it answers the pointer with scale alone and keeps the dark glyph. */
+.now-transport .now-play:hover{background:#fff;transform:scale(1.04)}
+.now-queue{min-width:0;height:min(62vh,560px);display:flex;flex-direction:column;padding:18px 10px 18px 18px;border-radius:24px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.07);-webkit-backdrop-filter:blur(var(--material-blur-floating)) saturate(var(--material-saturate-floating));backdrop-filter:blur(var(--material-blur-floating)) saturate(var(--material-saturate-floating));transition:opacity .26s ease,transform .38s var(--ease-glass),visibility .38s}
+.now-body.is-drawer-closed .now-queue{opacity:0;visibility:hidden;pointer-events:none;transform:translateX(18px)}
+.now-queue header{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.now-queue-copy{min-width:0}
+.now-queue h3{margin:0;color:#fff;font:600 17px var(--font-sans);letter-spacing:-.03em}
+.now-queue header p{margin:5px 0 0;color:rgba(255,255,255,.55);font-size:var(--text-md)}
+/* Two panels behind one control: the songs that follow, or the words. The active
+   side is a filled disc inside the outlined capsule, as in the reference. */
+/* Pinned to the view's bottom-right corner rather than the panel's head: the switch is the one
+   control that stays put whatever the panel is doing, so it is anchored to the drawer's own corner —
+   the drawer stretches to the body's full height and ends at the view's padding edge. */
+.now-switch{position:absolute;right:0;bottom:0;display:flex;align-items:center;gap:2px;padding:3px;border-radius:999px;border:1px solid rgba(255,255,255,.22)}
+.now-switch button{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:none;color:rgba(255,255,255,.82);transition:background .2s ease,color .2s ease}
+.now-switch button:hover{color:#fff}
+.now-switch button.is-on{background:#fff;color:#12141d}
+.now-queue ol,.now-lyrics{flex:1;min-height:0;margin:14px 0 0;padding:0 8px 0 0;overflow-y:auto}
+.now-queue ol{list-style:none;display:flex;flex-direction:column;gap:3px}
+/* The words are a window now, not a page: the renderer inside scrolls the live line to the
+   middle of this box, and the sheet keeps only its shape and its edge fade. */
+.now-lyrics{padding-right:10px;overflow:hidden;
+  -webkit-mask-image:linear-gradient(to bottom,#0000 0,#000 18px,#000 calc(100% - 20px),#0000 100%);
+  mask-image:linear-gradient(to bottom,#0000 0,#000 18px,#000 calc(100% - 20px),#0000 100%)}
+/* The words carry the reading, so the panel behind them is not a sheet of glass: no veil, no rim,
+   no blur of what is behind it — the stage's own backdrop comes through untouched and only the
+   lines themselves carry the hierarchy, by brightness (see the lyrics renderer below). */
+.now-queue.is-lyrics{background:none;border-color:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+/* Nothing to show: the note about it belongs in the middle of the window, not pinned to its top. */
+.now-lyrics:has(.now-empty){display:grid;place-content:center;text-align:center}
+.now-lyrics .now-empty{padding:0}
+/* Under the title, the two lines the reference puts there: who sings it, and which record. */
+.now-subtitle{margin:7px 0 0;color:rgba(255,255,255,.6);font:500 15px var(--font-sans);letter-spacing:-.01em}
+.now-row{display:flex;align-items:center;gap:11px;width:100%;padding:8px 10px;border-radius:12px;background:none;color:rgba(255,255,255,.82);text-align:left;transition:background .18s ease}
+.now-row:hover{background:rgba(255,255,255,.1)}
+.now-row.is-current{background:rgba(255,255,255,.17)}
+.now-row-art{width:38px;height:38px;flex:none;border-radius:10px;overflow:hidden;display:grid;place-items:center;background:rgba(255,255,255,.14);color:rgba(255,255,255,.8)}
+.now-row-art img{width:100%;height:100%;object-fit:cover;display:block}
+.now-row-copy{min-width:0;display:block}
+.now-row-copy strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,.92);font-size:var(--text-lg);font-weight:500}
+.now-row-copy small{display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,.55);font-size:var(--text-sm)}
+.now-empty{padding:14px 10px;color:rgba(255,255,255,.55);font-size:var(--text-md)}
+.now-lyrics .now-empty{padding:0}
+/* Stacked: the panel drops under the stage, so the switch keeps the same corner by hanging at the
+   top of that row - the drawer reserves its strip, and the panel opens below the switch rather than
+   pushing it off the bottom of a window only a panel tall. */
+@media(max-width:900px){.now-body{grid-template-columns:1fr;align-content:start;overflow-y:auto;row-gap:22px}.now-body.is-drawer-closed{grid-template-columns:1fr;row-gap:22px}.now-drawer{padding-top:54px}.now-switch{top:0;bottom:auto}.now-body.is-drawer-closed .now-queue{display:none}.now-queue{height:min(44vh,340px)}}
+@media(max-width:680px){.now-view{padding:16px 16px 22px}.now-art{width:min(34vh,300px)}.now-progress{position:static;left:auto;right:auto;bottom:auto}.now-transport .now-play{width:58px;height:58px}}
+
+/* The phone has no sheet for the words: they stand in the same rectangle the cover is centred in
+   — the window above the player block, which the view measures into --now-upper-top and
+   --now-upper-bottom — three blocks of them, with the cover gone from under them. The renderer's
+   words-variant sizes the window from the measured block, so the live line is always the middle
+   one; three lines have no ends to fade, so there is no mask here. */
+.now-words{position:absolute;left:0;right:0;top:calc(-1 * var(--now-upper-top,0px));bottom:calc(-1 * var(--now-upper-bottom,0px));display:none;height:fit-content;margin:auto 0;padding:0 4px;
+  -webkit-mask-image:none;mask-image:none}
+
+/* ── The small screen's fullscreen player ────────────────────────────────────
+   One column, art above controls, the words in the artwork's slot, and the songs that come next
+   as a sheet that rises from the foot of the screen over the bar. */
+/* The handle at the foot of the phone's stage: the sign of the pull, and a tap target for the
+   same thing. The wide layout has the corner switch and shows none of it. */
+.now-sheet-hint{position:absolute;left:50%;translate:-50% 0;bottom:4px;display:grid;place-items:center;
+  padding:6px 26px;background:none;border:0;color:rgba(255,255,255,.5);cursor:pointer;
+  animation:sheet-hint 2.6s ease-in-out infinite alternate;transition:opacity .3s ease,color .2s ease}
+.now-sheet-hint:hover{color:rgba(255,255,255,.9)}
+.now-body.is-drawer-open ~ .now-sheet-hint{opacity:0}
+/* The panel arriving in its new place after the layout flips between phone and desk. Translate
+   only — an opacity here would make the drawer a backdrop root and put the panel's frost out. */
+@keyframes sheet-handoff{from{translate:0 46px}to{translate:0 0}}
+.now-drawer.is-handoff{animation:sheet-handoff .44s var(--ease-glass) both}
+@media(max-width:680px){
+  .now-view{padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px)}
+  .now-body{display:flex;flex-direction:column;flex:1;min-height:0;margin-top:12px;overflow:hidden;gap:12px;transition:none}
+  .now-stage{position:relative;flex:1;justify-content:center;gap:clamp(10px,2vh,18px);touch-action:none}
+  /* The two round buttons are gone: the gestures below are the way to the lyrics now. */
+  .now-switch{display:none}
+  /* translate, never opacity: an opacity on the drawer's ancestor would make it the backdrop
+     root and put out the frost on the queue panel inside it.
+     The sheet is a card rather than a slab glued to the window: it keeps 15px of air on either
+     side. The body it hangs in is already inset by the view's own 16px padding, so -1px is what
+     leaves 15 on screen; the foot sits where that padding ends, so the card keeps all four of its
+     rounded corners off the window edge rather than running them off it. */
+  .now-drawer{position:absolute;left:-1px;right:-1px;bottom:0;z-index:3;height:min(74%,560px);padding-top:0;
+    translate:0 102%;visibility:hidden;pointer-events:none;
+    transition:translate .34s var(--ease-glass),visibility 0s linear .34s}
+  .now-body.is-drawer-open .now-drawer{translate:0 0;visibility:visible;pointer-events:auto;transition-delay:0s,0s}
+  .now-body.is-drawer-open .now-queue{opacity:1;visibility:visible;transform:none}
+  /* The sheet covers the artwork, and a tint you can read the artwork through is not a sheet: the
+     tile's own edges show through it as two vertical seams, which is what "it looks like something
+     is covering the edges" was. Over the phone's stage the panel is a dark glass of its own rather
+     than a white wash — the same look, but what is behind it stays behind it. */
+  .now-queue{height:100%;border-radius:24px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+    background:rgba(16,18,26,.82);border-color:rgba(255,255,255,.14);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
+  /* The artwork leaves the window as the lyrics come up — the whole way, off the left edge, so
+     nothing of it is left lying over the sheet — and the same drag brings it back in. Half the
+     window plus half its own width is exactly its centred place taken out of view; the extra 8px
+     is so "gone" means gone at any width. The wrapper stays where it is and only the picture
+     travels: the slot it leaves is the one empty place on the stage, and the note about missing
+     words stands in the middle of it. */
+  /* The cover is centred in the window above the player block rather than in the column it sits
+     in: --now-lift is how far it has to rise for its own centre to land on that rectangle's (the
+     room above its slot, less the room below), measured by the page. It slides out along the same
+     line; the slot itself — what the words and the stand-in note are centred in — does not move. */
+  .now-art{translate:0 calc(-1 * var(--now-lift,0px))}
+  .now-stage.is-dragging .now-art{transition:none}
+  /* The foot of the page, and the gesture written on it: an arrow that lifts and settles, saying
+     the songs come from below and a pull brings them out. It is the phone's only sign that they
+     exist — the wide layout has the corner switch for that — so it sits on the bottom edge, under
+     everything, and goes as soon as the panel does. Nothing glass rides on it, so its opacity may
+     animate. */
+  /* The artwork yields its slot to the words and to nothing else: the queue rises as a sheet over
+     the transport instead, so the cover stays where it is while the songs are up. */
+  .now-body:not(.is-lyrics-panel) .now-art{translate:0 calc(-1 * var(--now-lift,0px))}
+  .now-body.is-lyrics-panel .now-art{translate:calc(var(--now-reveal,0) * (-50vw - 50% - 8px)) calc(-1 * var(--now-lift,0px));transition:translate .34s var(--ease-glass)}
+  /* The words carry their own place in the layout; the sheet is the queue's, so it steps aside. */
+  .now-body.is-lyrics-panel .now-drawer{display:none}
+  .now-words{display:flex;flex-direction:column;opacity:0;visibility:hidden;
+    transition:opacity .3s ease,visibility 0s linear .3s}
+  .now-body.is-drawer-open .now-words{opacity:1;visibility:visible;transition-delay:0s,0s}
+  .now-words:has(.now-empty){padding:0 26px}
+  .now-words .now-empty{font-size:15px}
+  .now-sheet-hint{bottom:calc(env(safe-area-inset-bottom,0px) + 2px)}
+}
+/* The bob travels; it must not touch opacity, or the running animation would out-rank the rule
+   above and the arrow would stay lit while the sheet it points at is already open. */
+/* The bob travels — and it has to carry the handle's own centring with it: an animation on
+   `translate` replaces the whole value, so a keyframe that only named the Y would drop the
+   `-50%` the handle is centred by and leave the arrow sitting to one side. */
+@keyframes sheet-hint{from{translate:-50% 0}to{translate:-50% -5px}}
+
+/* The lyrics renderer and the editor ship their styles with their own chunks
+   (`features/lyrics/lyrics.css`), so the studio's initial stylesheet stays lean. The one rule
+   that belongs here is the now view's layout: the lyrics are the panel worth more room —
+   the words read at 24px, so on a wide window the open column takes a wider share of the body. */
+@media(min-width:901px){.now-body.is-drawer-open.is-lyrics-panel{grid-template-columns:minmax(0,1fr) minmax(340px,min(32vw,560px))}}

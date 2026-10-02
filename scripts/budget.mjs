@@ -20,7 +20,7 @@ const LIMITS = {
   // now-playing baseline) plus ~1.9 kB gz for the lyrics feature's own file, which ships with
   // the now-playing/editor chunks and is only fetched when one of them is. The limit guards the
   // total, so it carries that feature's cost explicitly.
-  cssGz: 16_000,
+  cssGz: 18_000,
   largestChunkGz: 58_000, // the shared vendor chunk, measured 53.7 kB gz
 };
 

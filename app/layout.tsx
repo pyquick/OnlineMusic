@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import "./globals.css";
+import "@/styles/shared.css";
+import "@/styles/shell.css";
+import "@/styles/now.css";
 
 export const metadata: Metadata = {
   title: "Sonora Studio",
