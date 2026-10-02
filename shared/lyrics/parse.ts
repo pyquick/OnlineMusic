@@ -110,8 +110,8 @@ function shift(lines: LyricsLine[], delta: number) {
     if (line.start !== undefined) line.start = round3(Math.max(0, line.start + delta));
     if (line.end !== undefined) line.end = round3(Math.max(0, line.end + delta));
     for (const token of line.tokens ?? []) {
-      token.start = round3(Math.max(0, token.start + delta));
-      token.end = round3(Math.max(0, token.end + delta));
+      if (typeof token.start === "number") token.start = round3(Math.max(0, token.start + delta));
+      if (typeof token.end === "number") token.end = round3(Math.max(0, token.end + delta));
     }
   }
 }

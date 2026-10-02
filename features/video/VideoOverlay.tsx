@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type CSSProperties, type RefObject } from "react";
-import { FileVideo, Music2, SkipBack, SkipForward, Sparkles, Volume2, X } from "lucide-react";
+import { FileVideo, Music2, SkipBack, SkipForward, Sparkles, Volume2, X } from "@/design-system/components/icons";
 import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyphs";
 import { formatTime } from "@/shared/utilities/time";
 import type { Asset } from "@/shared/types/media";

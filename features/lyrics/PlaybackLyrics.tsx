@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, type RefObject } from "react";
-import { hasTiming, tokenOffsets, type LyricsDoc, type LyricsLine, type LyricsToken } from "@/shared/lyrics";
+import { hasTiming, hasWordTiming, tokenOffsets, type LyricsDoc, type LyricsLine, type LyricsToken } from "@/shared/lyrics";
 import { useLyricsSync } from "./useLyricsSync";
 import "./lyrics.css";
 
@@ -55,9 +55,9 @@ export default function PlaybackLyrics({ doc, media, variant = "sheet", classNam
           return (
             <p className={`lyr-line is-${state}`} key={index} data-lyr-line={index}>
               <span className="lyr-orig">
-                {/* A line without tokens still fills — whole-line, off its own span — so the one
-                    span carries the token marker either way. */}
-                {line.tokens?.length ? segmentsOf(line, line.tokens).map((segment, segmentIndex) => segment.token ? (
+                {/* A line without word timing still fills — whole-line, off its own span — so the
+                    one span carries the token marker either way; untimed tokens read as a line. */}
+                {hasWordTiming(line) && line.tokens ? segmentsOf(line, line.tokens).map((segment, segmentIndex) => segment.token ? (
                   <span className="lyr-token" data-lyr-token key={segmentIndex}>{segment.text}</span>
                 ) : (
                   <span className="lyr-gap" key={segmentIndex}>{segment.text}</span>

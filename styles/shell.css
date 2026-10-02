@@ -10,18 +10,30 @@
    rectangle rather than as the glass. The pill answers a press with the raised capsule instead.
    (The property inherits, so the items and their glyphs are covered too.) */
 .bottom-pill{position:fixed;z-index:var(--z-float);left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);height:var(--pill-h,64px);display:flex;align-items:stretch;padding:6px;border-radius:999px;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;animation:pill-in .3s var(--ease-glass) both}
-/* The item itself is not a run — its icon is an SVG and its words live in a child span — so it
-   wears the mix the pane carries for exactly that case: the glyphs and the words under them stay
-   one colour however dark or light the glass under the pill goes. */
-.pill-item{position:relative;z-index:1;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 2px;border-radius:999px;background:none;--ink-base:#000;--ink-top:#fff;color:color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base));font-size:10.5px;transition:color .2s}
+/* The pill is the sidebar in another shape, so it wears the sidebar's type: no face of its own,
+   just the shell's --font-sans inherited, and the items' words at the same --text-lg the rail's
+   .nav-item takes (2026-10-02: "以大屏幕字体为规范"). */
+/* The item itself is not a run — its icon is an SVG, its words live in child spans — so it paints
+   the glyph itself and the spans inherit the very same colour, and icon and words can never
+   disagree. The ink does not ramp through the greys: the pane's --ink-mix is snapped at its
+   middle (pure black on a light scene, pure white on a dark one, and the black until the sampler
+   has written anything), so an idle item is always exactly one of the two extremes. The current
+   item is the exception: its words wear the accent through the full ramp (the shared stylesheet),
+   while the glyph is left at this default. */
+.pill-item{position:relative;z-index:1;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 2px;border-radius:999px;background:none;color:color-mix(in srgb,#fff clamp(0%,(var(--ink-mix,0%) - 50%) * 200,100%),#000);font-size:var(--text-lg);transition:color .2s}
 /* The keyboard's ring, in the studio's own accent rather than the browser's default blue — the
    same ring the bar's cover and the waveform wear. A pointer never leaves one behind: the pill
    clears the focus a press hands its tile. */
 .pill-item:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .bottom-pill .pill-item:hover{background:none;box-shadow:none;transform:none;scale:1}
 .pill-icon{display:grid;place-items:center;height:20px}
-.pill-label{line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.pill-count{position:absolute;top:4px;left:50%;translate:14px 0;font:9px var(--font-sans);font-variant-numeric:tabular-nums;color:var(--ink-soft,#9da3b5)}
+/* No line-height of its own: the normal line box, like the rail's items. A 1em line box is
+   shorter than the face's ascent+descent, and the same overflow:hidden that clips the ellipsis
+   horizontally was eating the bottom pixels of the descenders (2026-10-02). */
+.pill-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+/* The badge is the sidebar's badge (.nav-count) in the pill's shape: the same ticker face and
+   --text-sm size. No colour of its own — the count inherits the item's ink like its label. */
+.pill-count{position:absolute;top:4px;left:50%;translate:14px 0;font:var(--text-sm) var(--font-mono)}
 /* The bubble has two faces, and a hover moves neither of them. At rest it is the capsule the
    current item wears: semi-transparent — its clarity is what Settings says — and with no frost of
    its own, so the pill's own content stays as sharp as it was; nothing is drawn along its edge.

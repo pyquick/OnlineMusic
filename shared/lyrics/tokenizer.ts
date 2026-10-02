@@ -72,9 +72,14 @@ function weightOf(token: string): number {
   return Math.max(0.5, letters);
 }
 
-export function tokenizeLine(text: string, start: number, end: number): LyricsToken[] {
+/**
+ * The line's tokens. Without a span (either edge absent) the words are still cut — the editor's
+ * tokenize works before any timing exists — they simply carry no times yet.
+ */
+export function tokenizeLine(text: string, start?: number, end?: number): LyricsToken[] {
   const parts = tokenizeText(text);
   if (parts.length === 0) return [];
+  if (typeof start !== "number" || typeof end !== "number") return parts.map((part) => ({ text: part }));
   const span = Math.max(0, end - start);
   const weights = parts.map(weightOf);
   const total = weights.reduce((sum, weight) => sum + weight, 0) || parts.length;

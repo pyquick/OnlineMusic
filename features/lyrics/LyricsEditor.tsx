@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent, type RefObject } from "react";
-import { ArrowLeft, Download, FileUp, Plus, Redo2, Undo2 } from "lucide-react";
+import { ArrowLeft, Download, FileUp, Plus, Redo2, Undo2 } from "@/design-system/components/icons";
 import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyphs";
 import { RangeControl } from "@/design-system/components/RangeControl";
+import { SeekBar } from "@/features/player";
 import { ApiError } from "@/infrastructure/api/client";
 import {
-  addLine, moveLine, moveToken, parseLyrics, setLineSpan, setTokenSpan, shiftAll, toJson, toLrc, tokenizeLineAt, type LyricsDoc,
+  addLine, hasTiming, mergeTokens, moveLine, moveToken, parseLyrics, setLineSpan, setTokenSpan, shiftAll, toJson, toLrc, tokenizeAllLines, tokenizeLineAt, type LyricsDoc,
 } from "@/shared/lyrics";
 import type { Asset } from "@/shared/types/media";
 import { saveLyricsDoc } from "./client";
@@ -88,7 +89,28 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
   const [selection, setSelection] = useState({ line: 0, token: -1 });
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
-  const select = useCallback((line: number, token: number) => setSelection({ line, token }), []);
+  /** The drag-selected token range — what Enter merges — and the interval being auditioned. */
+  const [range, setRange] = useState<{ line: number; from: number; to: number } | null>(null);
+  const rangeRef = useRef(range);
+  rangeRef.current = range;
+  const [playingRange, setPlayingRange] = useState<{ start: number; end: number } | null>(null);
+  const intervalRef = useRef<{ start: number; end: number } | null>(null);
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
+  const select = useCallback((line: number, token: number) => {
+    setSelection({ line, token });
+    setRange(null);
+  }, []);
+
+  /**
+   * The first step of the timing workflow: when the document has no timing at all, the editor
+   * opens on a paste step — the full lyrics in, one line per sentence, words cut automatically.
+   * Skip leaves whatever is there (a tag import, an empty table) untouched.
+   */
+  const [intro, setIntro] = useState(() => !hasTiming(initialDoc));
+  const introRef = useRef(intro);
+  introRef.current = intro;
+  const [introText, setIntroText] = useState(() => initialDoc.lines.map((line) => line.text).join("\n"));
 
   /**
    * The workspace's own tape speed — 0.3× to 2×, always opening at 1.0 — so a line can be timed
@@ -187,6 +209,86 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
     bumpHistory();
   }, []);
 
+  /**
+   * Audition one interval — a sentence's span or a single word's. It plays through the page's own
+   * transport state (never `element.play()`), so the whole studio agrees on what is playing, and
+   * a rAF watch pauses it again at the interval's end. Clicking the same interval toggles.
+   */
+  const cancelInterval = useCallback(() => {
+    intervalRef.current = null;
+    setPlayingRange(null);
+  }, []);
+
+  const playRange = useCallback((start: number, end: number) => {
+    const element = media.current;
+    if (!element || end <= start) return;
+    const armed = intervalRef.current;
+    if (playingRef.current && armed && armed.start === start && armed.end === end) {
+      cancelInterval();
+      onTogglePlayback();
+      return;
+    }
+    element.currentTime = start;
+    intervalRef.current = { start, end };
+    setPlayingRange({ start, end });
+    if (!playingRef.current || element.paused) onTogglePlayback();
+  }, [media, onTogglePlayback, cancelInterval]);
+
+  useEffect(() => {
+    const element = media.current;
+    const target = intervalRef.current;
+    if (!element || !target || !playing) return;
+    let frame = 0;
+    let timer = 0;
+    let stopped = false;
+    // Pause the element itself first: routing the stop through React state would let the tape run
+    // on for the length of a render, audible as a word bleeding into its neighbour. The toggle
+    // then only brings the studio's state in line.
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      cancelInterval();
+      if (!element.paused) {
+        element.pause();
+        if (playingRef.current) onTogglePlayback();
+      }
+    };
+    const check = () => {
+      if (element.currentTime >= target.end) { stop(); return true; }
+      // A seek that left the interval entirely is the user taking over; stand the audition down.
+      if (element.currentTime < target.start - 0.05) { cancelInterval(); return true; }
+      return false;
+    };
+    // rAF is frame-accurate while the window is visible; the timer poll keeps the stop honest
+    // when rAF is throttled in a background or occluded window, where a frame can be 100 ms away.
+    frame = window.requestAnimationFrame(function tick() {
+      frame = 0;
+      if (check()) return;
+      frame = window.requestAnimationFrame(tick);
+    });
+    const beat = () => {
+      timer = 0;
+      if (check()) return;
+      timer = window.setTimeout(beat, 30);
+    };
+    timer = window.setTimeout(beat, 30);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [media, playing, playingRange, cancelInterval, onTogglePlayback]);
+
+  useEffect(() => {
+    if (!playing && intervalRef.current) cancelInterval();
+  }, [playing, cancelInterval]);
+
+  /** Enter on a drag-selected range: the words become one, span and all. */
+  const mergeRange = useCallback((line: number, from: number, to: number) => {
+    setRange(null);
+    apply(mergeTokens(docRef.current, line, from, to));
+    setSelection({ line, token: from });
+  }, [apply]);
+
   async function save() {
     if (!asset.apiId || saving === "saving") return;
     setSaving("saving");
@@ -204,7 +306,12 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
     }
   }
 
-  /** Enter: stamp the boundary under the playhead, or lay down a line's span first. */
+  /**
+   * Enter: stamp the boundary under the playhead. A line without words is timed at the line level
+   * first and tokenized on the third press; a line whose words exist — timed or not — is timed
+   * word by word: the first press opens the word, the second closes it and opens the next, and
+   * the line's own span follows its first start and its last end.
+   */
   const stamp = useCallback(() => {
     const current = docRef.current;
     const time = playhead();
@@ -231,6 +338,24 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
     }
     if (token < 0) token = 0;
     const last = line.tokens.length - 1;
+    token = Math.min(token, last);
+    const entry = line.tokens[token];
+    if (typeof entry.start !== "number") {
+      let opened = setTokenSpan(current, lineIndex, token, { start: time });
+      if (typeof line.start !== "number") opened = setLineSpan(opened, lineIndex, { start: time });
+      apply(opened);
+      return;
+    }
+    if (typeof entry.end !== "number") {
+      const end = Math.max(time, entry.start + 0.05);
+      let closed = setTokenSpan(current, lineIndex, token, { end });
+      if (token < last) closed = setTokenSpan(closed, lineIndex, token + 1, { start: end });
+      else if (typeof line.end !== "number") closed = setLineSpan(closed, lineIndex, { end });
+      apply(closed);
+      if (token < last) select(lineIndex, token + 1);
+      else if (lineIndex < current.lines.length - 1) select(lineIndex + 1, -1);
+      return;
+    }
     let next = setTokenSpan(current, lineIndex, token, { end: time });
     if (token < last) next = setTokenSpan(next, lineIndex, token + 1, { start: time });
     else next = setLineSpan(next, lineIndex, { end: Math.max(time, line.end ?? time) });
@@ -275,7 +400,12 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
-      const typing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+      // A focused slider is not a text field: the transport keys still work (the page's own rule),
+      // or the editor would go dead every time the pointer touched the seek or speed slider. Its
+      // arrows stay the slider's, though — nudging a stamp is for when the words have the focus.
+      const onSlider = target instanceof HTMLInputElement && target.type === "range";
+      const typing = (target instanceof HTMLInputElement && !onSlider)
+        || target instanceof HTMLTextAreaElement
         || (target instanceof HTMLElement && target.isContentEditable);
       const mod = event.metaKey || event.ctrlKey;
       if (mod && event.key.toLowerCase() === "z") {
@@ -290,8 +420,15 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
       }
       if (typing) return;
       if (event.key === " " || event.code === "Space") { event.preventDefault(); onTogglePlayback(); return; }
-      if (event.key === "Enter") { event.preventDefault(); stamp(); return; }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const selected = rangeRef.current;
+        if (selected) mergeRange(selected.line, selected.from, selected.to);
+        else stamp();
+        return;
+      }
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        if (onSlider) return;
         const direction = event.key === "ArrowLeft" ? -1 : 1;
         const step = event.altKey ? 0.001 : event.shiftKey ? 0.1 : 0.01;
         event.preventDefault();
@@ -299,16 +436,23 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
         return;
       }
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        if (onSlider) return;
         event.preventDefault();
         stepToken(event.key === "ArrowUp" ? -1 : 1);
         return;
       }
-      if (event.key === "Escape") { event.preventDefault(); requestClose(); }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        // Escape backs out one layer at a time: the paste step, then a token range, then the editor.
+        if (introRef.current) { setIntro(false); return; }
+        if (rangeRef.current) { setRange(null); return; }
+        requestClose();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stamp, nudge, stepToken, undo, redo, onTogglePlayback, onClose, dirty]);
+  }, [stamp, mergeRange, nudge, stepToken, undo, redo, onTogglePlayback, onClose, dirty]);
 
   // The selection follows the keyboard: whatever row or chip holds it comes into view.
   useEffect(() => {
@@ -361,6 +505,15 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
     select(docRef.current.lines.length, -1);
   }
 
+  /** The paste step's Continue: read whatever was pasted (LRC and JSON keep their times), split
+      by newline and cut every line into words — all of it one undo entry. */
+  function useIntro() {
+    setIntro(false);
+    const parsed = parseLyrics(introText);
+    apply(tokenizeAllLines(parsed));
+    select(0, -1);
+  }
+
   return (
     <section className="lxe" aria-label="Edit lyrics">
       <header className="lxe-head">
@@ -383,7 +536,11 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
             {doc.lines.map((line, index) => (
               <EditorRow key={index} doc={doc} index={index} duration={duration} selected={selection.line === index}
                 selectedToken={selection.line === index ? selection.token : -1}
-                onSelect={select} onApply={apply} playhead={playhead} />
+                range={range && range.line === index ? { from: range.from, to: range.to } : null}
+                playingRange={playingRange}
+                onSelect={select} onApply={apply}
+                onRange={(lineIndex, next) => setRange(next ? { line: lineIndex, from: next.from, to: next.to } : null)}
+                onMerge={mergeRange} onPlayRange={playRange} playhead={playhead} />
             ))}
             {doc.lines.length === 0 && <p className="lxe-empty">Nothing here yet — import a file above, or add the first line.</p>}
             <button className="ghost-button lxe-add-line" onClick={addFirstLine}><Plus size={14} /> Add line</button>
@@ -395,6 +552,7 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
               <button className="primary-button" onClick={onTogglePlayback} aria-label={playing ? "Pause" : "Play"}>{playing ? <PauseGlyph size={18} /> : <PlayGlyph size={18} />}<span>{playing ? "Pause" : "Play"}</span></button>
               <TimeReadout media={media} />
             </div>
+            <SeekBar media={media} ariaLabel="Seek" onSeek={cancelInterval} />
             <RangeControl label="Speed" value={speed} min={0.3} max={2} step={0.05} display={`${speed.toFixed(2)}×`} onChange={setSpeed} />
             <div className="lxe-offset">
               <label>Offset<input type="number" data-glass-edge="" step="10" value={offsetMs} onChange={(event) => setOffsetMs(Number(event.target.value) || 0)} />ms</label>
@@ -409,10 +567,29 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
             <p className="eyebrow">Live preview — the playback page, exactly</p>
             <div className="lxe-preview-stage"><PlaybackLyrics doc={doc} media={media} variant="preview" /></div>
           </div>
-          <p className="lxe-keys">Space play · Enter stamp · ← → nudge · ↑ ↓ word · ⌘Z undo</p>
+          <p className="lxe-keys">Space play · Enter stamp · drag words + Enter merge · ← → nudge · ↑ ↓ word · ⌘Z undo</p>
         </aside>
       </div>
       <input ref={importRef} type="file" accept=".lrc,.txt,.json,text/plain,application/json" hidden onChange={onImportFile} />
+      {intro && (
+        <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setIntro(false); }}>
+          <div className="auth-modal" data-glass-edge="" role="dialog" aria-modal="true">
+            <div className="modal-heading">
+              <div>
+                <p className="eyebrow">Before timing</p>
+                <h2>Paste the full lyrics</h2>
+                <p>One line per sentence — every line is cut into words automatically, timing comes next. LRC and JSON keep their own times.</p>
+              </div>
+            </div>
+            <textarea className="lxe-intro-text" data-glass-edge="" value={introText} autoFocus
+              placeholder={"First line of the song\nSecond line\n…"} onChange={(event) => setIntroText(event.target.value)} />
+            <div className="lxe-confirm-actions">
+              <button className="ghost-button" data-glass-edge="" onClick={() => setIntro(false)}>Skip</button>
+              <button className="primary-button" disabled={!introText.trim()} onClick={useIntro}>Use lyrics</button>
+            </div>
+          </div>
+        </div>
+      )}
       {pending && (
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPending(null); }}>
           <div className="auth-modal" data-glass-edge="" role="dialog" aria-modal="true">

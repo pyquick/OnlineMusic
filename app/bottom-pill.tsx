@@ -34,11 +34,14 @@ const MOVE_EPSILON = 0.5;
  * The liquid trip, for a change of item that did not come from a drag: the capsule swells into the
  * clear glass, crosses, and contracts onto its destination — grow, hold, shrink. Seconds from
  * lift-off; the envelope is time-based, because a spring's settle time is the same at any distance.
+ * The hold is a flash, not a pause (2026-10-02: "不要在点的上方悬浮0.3s,而是只要悬浮0.03s就变成
+ * hover"): the glass is at full swell for 0.03s and is already contracting onto the item long
+ * before it arrives, so the tap reads as the capsule having become the new one almost at once.
  */
 const TRAVEL_GROW = 0.16;
 const TRAVEL_RISE = 0.12;
-const TRAVEL_HOLD = 0.42;
-const TRAVEL_END = 0.62;
+const TRAVEL_HOLD = 0.15;
+const TRAVEL_END = 0.35;
 /** How fast the capsule must be moving before it stretches, and the most it may stretch: liquid
     leans into its own velocity — wider along the travel, a little flatter across it. */
 const STRETCH_AT = 1500;

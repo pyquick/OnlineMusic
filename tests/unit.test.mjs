@@ -16,11 +16,11 @@ import { validateCreateInput, validateMetadata, AssetValidationError } from "../
 import { assetIndexEntry } from "../lib/assets.ts";
 import { parseLyrics, parseLyricsJson, docFromLines } from "../shared/lyrics/parse.ts";
 import { toLrc } from "../shared/lyrics/serialize.ts";
-import { lineAt, lineEnd, lineState, tokenProgress, docDuration, hasTiming } from "../shared/lyrics/timeline.ts";
+import { lineAt, lineEnd, lineState, tokenProgress, tokenFill, docDuration, hasTiming, hasWordTiming } from "../shared/lyrics/timeline.ts";
 import { tokenizeText, tokenizeLine } from "../shared/lyrics/tokenizer.ts";
 import {
-  addLine, deleteLine, setLineTranslation, setLineSpan, moveLine, tokenizeLineAt,
-  splitLine, mergeLines, shiftAll, earliestTime, setTokenSpan,
+  addLine, deleteLine, setLineTranslation, setLineSpan, moveLine, tokenizeLineAt, tokenizeAllLines,
+  splitLine, mergeLines, shiftAll, earliestTime, setTokenSpan, mergeTokens, moveToken,
 } from "../shared/lyrics/edit.ts";
 import { validateLyricsDoc, coerceLyricsDoc, LyricsValidationError } from "../shared/lyrics/validation.ts";
 import { MAX_LYRICS_LINES, MAX_TOKENS_PER_LINE } from "../shared/lyrics/types.ts";
@@ -190,6 +190,18 @@ describe("the lyrics timeline", () => {
     assert.deepEqual(tokenProgress({ text: "x", start: 0, end: 1 }, 0.5), { index: -1, fill: 0 });
     assert.equal(docDuration(doc), 20);
   });
+
+  test("untimed tokens take no part in the timeline", () => {
+    const line = { text: "a b c", start: 0, end: 6, tokens: [{ text: "a", start: 0, end: 2 }, { text: "b" }, { text: "c", start: 4 }] };
+    assert.equal(hasWordTiming(line), true);
+    assert.equal(hasWordTiming({ text: "x", tokens: [{ text: "x" }] }), false);
+    assert.deepEqual(tokenProgress(line, 1), { index: 0, fill: 0.5 });
+    assert.deepEqual(tokenProgress(line, 5), { index: 2, fill: 0 });   // the untimed word neither fills nor blocks
+    assert.equal(tokenFill({ text: "x" }, 5), 0);
+    const allUntimed = { version: 1, lines: [{ text: "x", start: 0, tokens: [{ text: "x" }] }] };
+    assert.equal(lineEnd(allUntimed, 0), Number.POSITIVE_INFINITY);    // nothing timed ends it
+    assert.equal(docDuration({ version: 1, lines: [{ text: "x", tokens: [{ text: "x" }] }] }), 0);
+  });
 });
 
 describe("the tokenizer", () => {
@@ -206,6 +218,16 @@ describe("the tokenizer", () => {
     assert.equal(tokens[0].start, 12.3);
     assert.equal(tokens[tokens.length - 1].end, 15.2);
     for (let index = 1; index < tokens.length; index += 1) assert.ok(tokens[index].start >= tokens[index - 1].end - 1e-9);
+  });
+
+  test("without a span the words are still cut, they simply carry no times", () => {
+    const tokens = tokenizeLine("你好，世界 hello world");
+    assert.deepEqual(tokens.map((token) => token.text), ["你", "好，", "世", "界", "hello", "world"]);
+    for (const token of tokens) {
+      assert.equal(token.start, undefined);
+      assert.equal(token.end, undefined);
+    }
+    assert.equal(tokenizeLine("", undefined, undefined).length, 0);
   });
 });
 
@@ -265,6 +287,56 @@ describe("lyrics editing", () => {
     assert.equal(respanned.lines[0].end, 16);
     assert.equal(setTokenSpan(tokenizeLineAt(timed, 0), 0, 1, { start: 13 }).lines[0].tokens[1].start, 13);
   });
+
+  test("tokenize works before any timing exists", () => {
+    const plain = { version: 1, lines: [{ text: "你好，世界" }] };
+    const tokenized = tokenizeLineAt(plain, 0);
+    assert.deepEqual(tokenized.lines[0].tokens.map((token) => token.text), ["你", "好，", "世", "界"]);
+    assert.equal(tokenized.lines[0].tokens[0].start, undefined);
+    assert.equal(tokenized.lines[0].start, undefined);
+    assert.equal(tokenizeLineAt({ version: 1, lines: [{ text: "   " }] }, 0).lines[0].tokens, undefined);
+  });
+
+  test("tokenizeAllLines cuts every text line and leaves timed ones spread", () => {
+    const doc = { version: 1, lines: [{ text: "I love you", start: 0, end: 3 }, { text: "再 见" }, { text: "" }] };
+    const cut = tokenizeAllLines(doc);
+    assert.equal(cut.lines[0].tokens.length, 3);
+    assert.equal(cut.lines[0].tokens[0].start, 0);
+    assert.equal(cut.lines[0].tokens[2].end, 3);
+    assert.equal(cut.lines[1].tokens.length, 2);
+    assert.equal(cut.lines[1].tokens[0].start, undefined);
+    assert.equal(cut.lines[2].tokens, undefined);
+    assert.equal(doc.lines[1].tokens, undefined);          // the input is untouched
+  });
+
+  test("mergeTokens joins a range into one word, inner spacing included", () => {
+    const doc = tokenizeLineAt({ version: 1, lines: [{ text: "Hello, big world", start: 0, end: 3 }] }, 0);
+    const merged = mergeTokens(doc, 0, 0, 1);
+    assert.equal(merged.lines[0].tokens.length, 2);
+    assert.equal(merged.lines[0].tokens[0].text, "Hello, big");
+    assert.equal(merged.lines[0].tokens[0].start, doc.lines[0].tokens[0].start);
+    assert.equal(merged.lines[0].tokens[0].end, doc.lines[0].tokens[1].end);
+    assert.equal(merged.lines[0].text, "Hello, big world");  // the line itself is untouched
+    assert.equal(mergeTokens(doc, 0, 1, 1), doc);            // a range needs two words
+    assert.equal(doc.lines[0].tokens.length, 3);
+  });
+
+  test("mergeTokens of untimed words stays untimed", () => {
+    const doc = { version: 1, lines: [{ text: "你好世界", tokens: [{ text: "你" }, { text: "好" }, { text: "世" }, { text: "界" }] }] };
+    const merged = mergeTokens(doc, 0, 1, 2);
+    assert.equal(merged.lines[0].tokens.length, 3);
+    assert.equal(merged.lines[0].tokens[1].text, "好世");
+    assert.equal(merged.lines[0].tokens[1].start, undefined);
+  });
+
+  test("an untimed token cannot be nudged, and shifts leave it alone", () => {
+    const doc = { version: 1, lines: [{ text: "x y", tokens: [{ text: "x" }, { text: "y", start: 1, end: 2 }] }] };
+    assert.equal(moveToken(doc, 0, 0, 0.5), doc);
+    assert.equal(earliestTime(doc), 1);                      // untimed words contribute nothing
+    const shifted = shiftAll(doc, 0.5);
+    assert.equal(shifted.lines[0].tokens[1].start, 1.5);
+    assert.equal(shifted.lines[0].tokens[0].start, undefined);
+  });
 });
 
 describe("lyrics validation", () => {
@@ -294,6 +366,16 @@ describe("lyrics validation", () => {
     const value = coerceLyricsDoc({ version: 1, lines: [{ text: "ok", start: 0, end: 1 }, { text: 42 }, { text: "fine" }] });
     assert.deepEqual(value.lines.map((line) => line.text), ["ok", "fine"]);
     assert.equal(coerceLyricsDoc("nope"), null);
+  });
+
+  test("tokens may be untimed, but a bad time still throws", () => {
+    const value = validateLyricsDoc({ version: 1, lines: [{ text: "a", tokens: [{ text: "a" }, { text: "b", start: 1 }, { text: "c", end: 2 }] }] });
+    assert.equal(value.lines[0].tokens[0].start, undefined);
+    assert.equal(value.lines[0].tokens[0].end, undefined);
+    assert.equal(value.lines[0].tokens[1].start, 1);
+    assert.equal(value.lines[0].tokens[2].end, 2);
+    assert.throws(() => validateLyricsDoc({ version: 1, lines: [{ text: "a", tokens: [{ text: "a", start: -1 }] }] }), LyricsValidationError);
+    assert.equal(coerceLyricsDoc({ version: 1, lines: [{ text: "a", tokens: [{ text: "a" }] }] }).lines[0].tokens[0].start, undefined);
   });
 });
 

@@ -61,11 +61,14 @@ function lineFloor(line: LyricsLine): number {
   let floor = Number.POSITIVE_INFINITY;
   if (line.start !== undefined) floor = Math.min(floor, line.start);
   if (line.end !== undefined) floor = Math.min(floor, line.end);
-  for (const token of line.tokens ?? []) floor = Math.min(floor, token.start, token.end);
+  for (const token of line.tokens ?? []) {
+    if (typeof token.start === "number") floor = Math.min(floor, token.start);
+    if (typeof token.end === "number") floor = Math.min(floor, token.end);
+  }
   return Number.isFinite(floor) ? floor : 0;
 }
 
-/** Moves the whole line — its span and its tokens — never below zero. */
+/** Moves the whole line — its span and its tokens — never below zero. Untimed tokens hold still. */
 export function moveLine(doc: LyricsDoc, index: number, delta: number): LyricsDoc {
   const line = doc.lines[index];
   if (!line) return doc;
@@ -75,15 +78,38 @@ export function moveLine(doc: LyricsDoc, index: number, delta: number): LyricsDo
     ...entry,
     start: entry.start === undefined ? undefined : round3(entry.start + shift),
     end: entry.end === undefined ? undefined : round3(entry.end + shift),
-    tokens: entry.tokens?.map((token) => ({ text: token.text, start: round3(token.start + shift), end: round3(token.end + shift) })),
+    tokens: entry.tokens?.map((token) => ({
+      text: token.text,
+      start: typeof token.start === "number" ? round3(token.start + shift) : undefined,
+      end: typeof token.end === "number" ? round3(token.end + shift) : undefined,
+    })),
   }));
 }
 
-/** The automatic first cut: the line's own span spread over its tokens by weight. */
+/**
+ * The automatic first cut: the line's own span spread over its tokens by weight — or, when the
+ * line has no span yet, the words without any times. Tokenizing before timing is the point: the
+ * words can be prepared and timed word by word.
+ */
 export function tokenizeLineAt(doc: LyricsDoc, index: number): LyricsDoc {
   const line = doc.lines[index];
-  if (!line || typeof line.start !== "number" || typeof line.end !== "number" || !line.text.trim()) return doc;
-  return replace(doc, index, (entry) => ({ ...entry, tokens: tokenizeLine(entry.text, entry.start as number, entry.end as number) }));
+  if (!line || !line.text.trim()) return doc;
+  const timed = typeof line.start === "number" && typeof line.end === "number";
+  return replace(doc, index, (entry) => ({
+    ...entry,
+    tokens: timed ? tokenizeLine(entry.text, entry.start, entry.end) : tokenizeLine(entry.text),
+  }));
+}
+
+/** Tokenizes every line that has text and no tokens yet — the paste step's automatic cut. */
+export function tokenizeAllLines(doc: LyricsDoc): LyricsDoc {
+  let next = doc;
+  for (let index = 0; index < doc.lines.length; index += 1) {
+    const line = doc.lines[index];
+    if (line.tokens?.length || !line.text.trim()) continue;
+    next = tokenizeLineAt(next, index);
+  }
+  return next;
 }
 
 export function setTokenText(doc: LyricsDoc, lineIndex: number, tokenIndex: number, text: string): LyricsDoc {
@@ -109,11 +135,13 @@ export function setTokenSpan(doc: LyricsDoc, lineIndex: number, tokenIndex: numb
 
 export function moveToken(doc: LyricsDoc, lineIndex: number, tokenIndex: number, delta: number): LyricsDoc {
   const token = doc.lines[lineIndex]?.tokens?.[tokenIndex];
-  if (!token) return doc;
-  const shift = Math.max(delta, -Math.min(token.start, token.end));
+  if (!token || typeof token.start !== "number" || typeof token.end !== "number") return doc;
+  const from = token.start;
+  const to = token.end;
+  const shift = Math.max(delta, -Math.min(from, to));
   if (shift === 0) return doc;
   return replaceTokens(doc, lineIndex, (tokens) => {
-    tokens[tokenIndex] = { text: token.text, start: round3(token.start + shift), end: round3(token.end + shift) };
+    tokens[tokenIndex] = { text: token.text, start: round3(from + shift), end: round3(to + shift) };
     return tokens;
   });
 }
@@ -150,17 +178,19 @@ export function splitLine(doc: LyricsDoc, lineIndex: number, tokenIndex: number)
   const boundary = offsets[tokenIndex] ?? Math.round((line.text.length * tokenIndex) / tokens.length);
   const leftTokens = tokens.slice(0, tokenIndex).map((token) => ({ ...token }));
   const rightTokens = tokens.slice(tokenIndex).map((token) => ({ ...token }));
-  const cut = tokens[tokenIndex].start;
+  // The cut is the split token's start; an untimed token has none, so both halves stay untimed.
+  const cutAt = tokens[tokenIndex].start;
+  const cut = typeof cutAt === "number" ? round3(cutAt) : undefined;
   const left: LyricsLine = {
     text: line.text.slice(0, boundary).trim(),
     start: line.start,
-    end: line.start === undefined ? undefined : round3(cut),
+    end: cut,
     tokens: leftTokens.length ? leftTokens : undefined,
   };
   if (line.translation) left.translation = line.translation;
   const right: LyricsLine = {
     text: line.text.slice(boundary).trim(),
-    start: line.start === undefined ? undefined : round3(cut),
+    start: cut,
     end: line.end,
     tokens: rightTokens.length ? rightTokens : undefined,
   };
@@ -169,18 +199,49 @@ export function splitLine(doc: LyricsDoc, lineIndex: number, tokenIndex: number)
   return { ...doc, lines };
 }
 
+/** The glue between two merged texts: Latin gets a space, CJK does not. */
+function joinText(left: string, right: string): string {
+  const cjk = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/;
+  const glue = left && right && !cjk.test(left.slice(-1)) && !cjk.test(right[0]) ? " " : "";
+  return left + glue + right;
+}
+
+/**
+ * Merges adjacent tokens into one: the text is the line's own slice from the first token's start
+ * to the last token's end (so inner spacing survives), the span is their envelope, and untimed
+ * tokens simply contribute no edge. This is the drag-across-words + Enter operation.
+ */
+export function mergeTokens(doc: LyricsDoc, lineIndex: number, from: number, to: number): LyricsDoc {
+  const line = doc.lines[lineIndex];
+  const tokens = line?.tokens;
+  if (!line || !tokens || from < 0 || to >= tokens.length || to <= from) return doc;
+  const offsets = tokenOffsets(line.text, tokens);
+  const text = offsets.length
+    ? line.text.slice(offsets[from], offsets[to] + tokens[to].text.length)
+    : tokens.slice(from, to + 1).reduce((joined, token) => joinText(joined, token.text), "");
+  const starts = tokens.slice(from, to + 1).map((token) => token.start).filter((value): value is number => typeof value === "number");
+  const ends = tokens.slice(from, to + 1).map((token) => token.end).filter((value): value is number => typeof value === "number");
+  const merged: LyricsToken = { text };
+  if (starts.length) merged.start = round3(Math.min(...starts));
+  if (ends.length) merged.end = round3(Math.max(...ends));
+  return replaceTokens(doc, lineIndex, (entries) => {
+    entries.splice(from, to - from + 1, merged);
+    return entries;
+  });
+}
+
 /** Joins a line with the next one; the left line keeps its translation unless it has none. */
 export function mergeLines(doc: LyricsDoc, lineIndex: number): LyricsDoc {
   const left = doc.lines[lineIndex];
   const right = doc.lines[lineIndex + 1];
   if (!left || !right) return doc;
-  const cjk = /[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/;
-  const glue = left.text && right.text && !cjk.test(left.text.slice(-1)) && !cjk.test(right.text[0]) ? " " : "";
   const starts = [left.start, right.start].filter((value): value is number => typeof value === "number");
   const ends = [left.end, right.end].filter((value): value is number => typeof value === "number");
-  const tokens = [...(left.tokens ?? []).map((token) => ({ ...token })), ...(right.tokens ?? []).map((token) => ({ ...token }))].sort((a, b) => a.start - b.start);
+  // Untimed tokens sort last but keep their relative order (the sort is stable).
+  const at = (token: LyricsToken) => (typeof token.start === "number" ? token.start : Number.POSITIVE_INFINITY);
+  const tokens = [...(left.tokens ?? []).map((token) => ({ ...token })), ...(right.tokens ?? []).map((token) => ({ ...token }))].sort((a, b) => at(a) - at(b));
   const merged: LyricsLine = {
-    text: left.text + glue + right.text,
+    text: joinText(left.text, right.text),
     start: starts.length ? Math.min(...starts) : undefined,
     end: ends.length ? Math.max(...ends) : undefined,
     tokens: tokens.length ? tokens : undefined,
@@ -200,8 +261,8 @@ export function earliestTime(doc: LyricsDoc): number | undefined {
       if (typeof value === "number" && (earliest === undefined || value < earliest)) earliest = value;
     }
     for (const token of line.tokens ?? []) {
-      if (earliest === undefined || token.start < earliest) earliest = token.start;
-      if (token.end < earliest) earliest = token.end;
+      if (typeof token.start === "number" && (earliest === undefined || token.start < earliest)) earliest = token.start;
+      if (typeof token.end === "number" && (earliest === undefined || token.end < earliest)) earliest = token.end;
     }
   }
   return earliest;
@@ -217,7 +278,11 @@ export function shiftAll(doc: LyricsDoc, delta: number): LyricsDoc | null {
     ...line,
     start: line.start === undefined ? undefined : round3(line.start + delta),
     end: line.end === undefined ? undefined : round3(line.end + delta),
-    tokens: line.tokens?.map((token) => ({ text: token.text, start: round3(token.start + delta), end: round3(token.end + delta) })),
+    tokens: line.tokens?.map((token) => ({
+      text: token.text,
+      start: typeof token.start === "number" ? round3(token.start + delta) : undefined,
+      end: typeof token.end === "number" ? round3(token.end + delta) : undefined,
+    })),
   }));
   return { ...doc, lines };
 }

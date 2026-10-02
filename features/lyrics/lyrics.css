@@ -96,8 +96,12 @@
 .lxe-words{margin-top:10px;padding-left:12px;border-left:2px solid var(--line)}
 .lxe-words .eyebrow{margin-bottom:7px}
 .lxe-words-hint{margin:0;color:var(--muted);font-size:var(--text-md)}
-.lxe-tokens{display:flex;flex-wrap:wrap;gap:6px}
+.lxe-tokens{display:flex;flex-wrap:wrap;gap:6px;touch-action:pan-y}
+.lxe-token{display:inline-flex;align-items:stretch;gap:3px}
+.lxe-chip.is-in-range{border-color:var(--accent);background:var(--accent-soft)}
 .lxe-chip{display:inline-flex;align-items:baseline;gap:7px;padding:5px 9px;border-radius:var(--radius-control);border:1px solid var(--line);background:none;color:var(--ink)}
+/* The word's play button is a chip of its own: icon only, no text. */
+.lxe-chip-play{width:24px;padding:5px 0;justify-content:center;align-items:center}
 .lxe-chip b{font-weight:600}
 .lxe-chip small{color:var(--muted);font:var(--text-xs) var(--font-mono)}
 .lxe-chip.is-selected{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
@@ -113,6 +117,7 @@
 .lxe-preview-stage{flex:1;min-height:120px;border-radius:var(--radius-card);overflow:hidden;padding:14px 18px;background:linear-gradient(165deg,#16171f,#0b0c13 58%,#07080d)}
 .lyr--preview{height:100%}
 .lxe-confirm-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+.lxe-intro-text{width:100%;min-height:190px;margin-top:16px;padding:11px 12px;border-radius:var(--radius-control);border:1px solid var(--line);color:var(--ink);font:inherit}
 /* One column: the words and the tape step up (they are what the eye checks while timing), the
    sentences scroll beneath them. The stage keeps a fixed height here — a growing one would push
    the work off a phone's screen. */
@@ -139,16 +144,17 @@
    dense desktop layout. No type grows or shrinks with them. */
 @media(pointer:coarse){
   .lxe-chip{min-height:40px;align-items:center}
+  .lxe-chip-play{width:40px}
   .lxe-time-input,.lxe-token-text,.lxe-offset input{min-height:40px}
   .lxe-fields input{min-height:44px}
   .lxe-row-tools button,.lxe-token-edit button{padding:10px 12px;min-height:40px}
-  .lxe-head .icon-button{min-width:40px;min-height:40px}
+  .lxe-head .icon-button,.lxe-row-head .icon-button{min-width:40px;min-height:40px}
   .lxe-track{height:34px}
 }
 
 /* The editor's controls join the glass: the word chips and the time/field inputs are rimmed
    surfaces now, so the per-control settings reach them like every other family. */
-:is(.lxe-chip,.lxe-time-input,.lxe-token-text,.lxe-offset input,.lxe-fields input){--glass-group:field;
+:is(.lxe-chip,.lxe-time-input,.lxe-token-text,.lxe-offset input,.lxe-fields input,.lxe-intro-text){--glass-group:field;
   background:color-mix(in srgb,var(--panel2) calc(var(--glass-alpha,1) * 100%),transparent);
   -webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));
   backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}

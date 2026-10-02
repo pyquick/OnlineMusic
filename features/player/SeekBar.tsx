@@ -15,12 +15,14 @@ import { useMediaClock } from "./useMediaClock";
  * lands; without that the knob would snap back to the old position for a frame, which is exactly
  * the flicker a controlled input is supposed to avoid.
  */
-export function SeekBar({ media, remaining, disabled, ariaLabel }: {
+export function SeekBar({ media, remaining, disabled, ariaLabel, onSeek }: {
   media: RefObject<HTMLMediaElement | null>;
   /** Show what is left rather than the total on the right. */
   remaining?: boolean;
   disabled?: boolean;
   ariaLabel?: string;
+  /** A user seek — the editor uses it to stand down an auditioning interval. */
+  onSeek?: () => void;
 }) {
   const { time, duration } = useMediaClock(media);
   const [pending, setPending] = useState<number | null>(null);
@@ -33,6 +35,7 @@ export function SeekBar({ media, remaining, disabled, ariaLabel }: {
     const total = Number.isFinite(element.duration) ? element.duration : 0;
     if (!total) return;
     element.currentTime = value;
+    onSeek?.();
     setPending(value);
     // The next tick is the element's own reading; until then the pending value is what shows.
     window.setTimeout(() => setPending(null), 120);

@@ -7,17 +7,16 @@ import {
   Check,
   ChevronDown,
   CircleHelp,
-  Clock3,
   Disc3,
   FileAudio,
   FileVideo,
   FolderOpen,
-  Headphones,
-  Home as House,
+  House,
   Layers3,
   Library,
   List,
   ListMusic,
+  LockKeyhole,
   Maximize2,
   Menu,
   MessageSquareQuote,
@@ -31,18 +30,16 @@ import {
   Search,
   Settings,
   Shuffle,
-  UserRound,
-  LockKeyhole,
   SkipBack,
   SkipForward,
   SlidersHorizontal,
   Sparkles,
   Upload,
-  Video,
+  UserRound,
   Volume2,
   VolumeX,
   X,
-} from "lucide-react";
+} from "@/design-system/components/icons";
 import { readEmbeddedTags } from "@/lib/embedded-tags";
 import { startAmbientDrift } from "@/lib/ambientDrift";
 import dynamic from "next/dynamic";
@@ -1153,7 +1150,7 @@ export default function Home() {
       <audio ref={audioRef} preload="metadata" onError={(event) => { const element = event.currentTarget; if (asset?.kind !== "audio" || !element.getAttribute("src")) return; setMediaError("This browser cannot decode this file"); }} />
       <div ref={prefetchHostRef} className="prefetch-host" aria-hidden="true" />
 
-      {lyricsOpen && <aside className="glass-panel lyrics-panel" data-glass-edge="" data-glass-scene="moving-page" aria-label="Lyrics"><header className="glass-panel-head"><div><p className="eyebrow">Lyrics</p><h3>{asset?.title || "Not Playing"}</h3></div><div className="lyrics-panel-actions"><button className="toolbar-button" data-glass-edge="" onClick={openLyricsEditor} disabled={asset?.kind !== "audio"}><Pencil size={14} /> Edit lyrics</button><button className="icon-button" onClick={() => setLyricsOpen(false)} aria-label="Close lyrics"><X size={16} /></button></div></header>{lyricsPlain.length > 0 ? <div className="lyrics-body">{lyricsPlain.map((line, index) => <p key={`${index}-${line}`}>{line}</p>)}</div> : <p className="glass-empty">No lyrics found. Lyrics stored in the file&apos;s tags appear here after import.</p>}</aside>}
+      {lyricsOpen && <aside className="glass-panel lyrics-panel" data-glass-edge="" data-glass-scene="moving-page" aria-label="Lyrics"><header className="glass-panel-head"><div><p className="eyebrow">Lyrics</p><h3>{asset?.title || "Not Playing"}</h3></div><button className="icon-button" onClick={() => setLyricsOpen(false)} aria-label="Close lyrics"><X size={16} /></button></header>{lyricsPlain.length > 0 ? <div className="lyrics-body">{lyricsPlain.map((line, index) => <p key={`${index}-${line}`}>{line}</p>)}</div> : <p className="glass-empty">No lyrics found. Lyrics stored in the file&apos;s tags appear here after import.</p>}</aside>}
 
       {projectsOpen && <aside className="glass-panel projects-panel" data-glass-edge="" data-glass-scene="moving-page" aria-label="Projects"><header className="glass-panel-head"><div><p className="eyebrow">Projects</p><h3>{assets.length} item{assets.length === 1 ? "" : "s"}{queue.length > 0 ? ` · ${queue.length} queued` : ""}</h3></div><button className="icon-button" onClick={() => setProjectsOpen(false)} aria-label="Close projects"><X size={16} /></button></header><div className="project-list">{queue.length > 0 && <section className="project-list-group"><p className="eyebrow">Queue</p>{queue.map((name) => <span className="project-list-row is-queued" key={`queued-${name}`}><ListMusic size={14} /><span className="project-list-name">{name}</span></span>)}</section>}<section className="project-list-group"><p className="eyebrow">Media</p>{assets.map((item) => <button className={`project-list-row ${asset?.file.name === item.file.name ? "is-current" : ""}`} key={item.file.name} onClick={() => { void playAsset(item); }} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}>{item.kind === "video" ? <FileVideo size={14} /> : item.kind === "audio" ? <Music2 size={14} /> : <Layers3 size={14} />}<span className="project-list-name">{item.title || item.file.name}</span><small>{formatBytes(assetSize(item))}</small></button>)}{assets.length === 0 && <p className="glass-empty">Nothing imported yet.</p>}</section></div></aside>}
 

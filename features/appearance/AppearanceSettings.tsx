@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { X } from "lucide-react";
+import { X } from "@/design-system/components/icons";
 import { GLASS_BLUR_STEP, MAX_BAND_PX, MAX_EDGE_OFFSET, MAX_GLASS_BLUR, type GlassGroup, type GlassSettings } from "@/features/glass";
 import { RangeControl } from "@/design-system/components/RangeControl";
 import "./appearance.css";

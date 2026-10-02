@@ -275,15 +275,10 @@
 .content-area{position:relative}
 
 /* ── The material ────────────────────────────────────────────────────────────
-   One shared rule carries the frost: a translucent white tint over the blurred
-   backdrop. The panes keep their hairline rim (::after) and corner radius,
-   which is what makes the blur read as a sheet of glass. The page's own cards
-   are in this list too: a card is a sheet of the same glass, so the Clarity
-   slider, the Blur slider and the theme's tint reach them the same way they
-   reach the bar — a card on a dark backdrop is dark glass, never a flat black.
-   (They take the frost only, not the rim: every card would need its own
-   displacement map, and a library holds hundreds of them.) */
-:is([data-glass-edge],.panel,.asset-card,.project-card,.album-card,.album-detail,.settings-card,.parameter-card,.parameter-wave-card,.metadata-panel,.upload-modal,.auth-modal,.dropzone,.empty-assets){
+   Glass is opt-in: the DOM marker is the shared boundary between feature code, the
+   runtime engines and this stylesheet. Unmarked cards and content keep their own
+   panel material, so a library cannot accidentally create hundreds of blur surfaces. */
+:is([data-glass-edge]){
   /* The level: regular. Its value is the shell's own --material-veil-regular (see the material
      levels block), so the tint of every pane and card in the studio is one decision made there.
      Clarity is the milky/frosted half of it: at 100% the pane is nearly clear glass, at 0% it is
@@ -322,8 +317,8 @@
    tint's veil: a card is a sheet of the page, so on paper it is translucent white and on Ink,
    Navy or Graphite it is translucent dark glass instead of a flat black. They take no rim: a
    library can hold hundreds of cards and every rim pane needs a displacement map of its own. */
-:is(.panel,.asset-card,.project-card,.album-card,.album-detail,.settings-card,.parameter-card,.parameter-wave-card,.metadata-panel,.upload-modal,.auth-modal,.dropzone,.empty-assets){
-  background:color-mix(in srgb,var(--panel) calc(var(--glass-alpha,1) * 100%),transparent)}
+:is([data-glass-edge]){
+  background:color-mix(in srgb,var(--glass-tint,255 255 255) calc(var(--glass-alpha,1) * 100%),transparent)}
 /* WebKit renders no bend for a backdrop-filter that names a filter — it does not paint the
    reference, whatever its parser answered — so the rim of lib/glassEdge.ts has nowhere to attach
    in Safari, which marks the shell with .glass-rim-fallback instead of building maps nobody can
@@ -437,7 +432,10 @@
 .volume-cluster.is-open .glass-button{background:none;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;color:var(--chip-ink-2)}
 .volume-slider{display:flex;align-items:center;width:0;opacity:0;overflow:hidden;transition:width .3s var(--ease-glass),opacity .22s ease}
 .volume-cluster.is-open .volume-slider{width:96px;opacity:1}
-.volume-slider input{width:96px;margin:0 4px;height:14px;--track-h:6px;appearance:none;-webkit-appearance:none;background:none;cursor:pointer;color:var(--accent)}
+/* The input fills the slider exactly and its padding insets the track: the 11px thumb overhangs
+   the track at either end, and the fold's overflow clip cut that overhang in half at 100% — the
+   half-circle the user reported. Padding keeps the thumb inside the input's own box. */
+.volume-slider input{width:100%;margin:0;padding:0 6px;height:14px;--track-h:6px;appearance:none;-webkit-appearance:none;background:none;cursor:pointer;color:var(--accent)}
 /* While the pill is open the two buttons to its left step aside, so the bar it uncovers is room the
    cluster already had rather than width pushed onto the rest of the player. Each takes one gap with
    it (the cluster's 8px) so the pill lands flush against the next control. */
@@ -508,29 +506,21 @@
    white over a dark frame, not the near-black the pane headings use. Declared after the families
    above, which it has to out-order to be read at all. */
 :is(.now-playing strong)[data-ink],:is(.now-playing strong) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#000;--ink-top:#fff}
-/* The small screen's pill is the same navigation in another shape, so its labels read exactly like
-   the sidebar's, and the item that is current wears the studio's accent with a light counterpart
-   for the dark frames, where the authored accent would sink into the glass. Each of these has to
-   carry the whole mix, not just its ends: the sidebar's family does, and a family that only names
-   --ink-base/--ink-top leaves the words at the authored black however dark the glass behind them
-   goes — which is exactly what the pill did until the labels were given the mix too. */
-:is(.pill-item:where(:not(.is-current)))[data-ink],:is(.pill-item:where(:not(.is-current))) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#000;--ink-top:#fff;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
-:is(.pill-item.is-current,.nav-item.active,.nav-item:hover)[data-ink],:is(.pill-item.is-current,.nav-item.active,.nav-item:hover) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#d6404a;--ink-top:#ffb3b6;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+/* The small screen's pill is the same navigation in another shape, so it wears the same accent —
+   on the item itself, so the glyph, the label and the count are one red, and the light
+   counterpart still arrives on the dark frames where the authored accent would sink into the
+   glass. The unselected items are deliberately not listed here: since 2026-10-02 they inherit the
+   pill's own ink — a flip of the scene between pure black and pure white (styles/shell.css). */
+.pill-item.is-current{color:color-mix(in srgb,#ffb3b6 var(--ink-mix,0%),#d6404a)}
+:is(.nav-item.active,.nav-item:hover)[data-ink],:is(.nav-item.active,.nav-item:hover) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#d6404a;--ink-top:#ffb3b6;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
 
 /* Panels opened from the bar: the same glass as the rail and the bar. */
 .glass-panel{position:fixed;z-index:var(--z-panel);display:flex;flex-direction:column;padding:16px 18px;border-radius:calc(var(--radius-pane-sheet) * var(--glass-radius,1));overflow:hidden;animation:panel-in .3s var(--ease-glass) both}
 /* Opacity-free for the same reason as bar-rise: it would kill the pane's backdrop-filter. */
 @keyframes panel-in{from{translate:0 14px;scale:.97}to{translate:0 0;scale:1}}
-/* Lyrics have no edge: no hairline, no rim, no border — the sheet thins out into the page instead,
-   so the words read as floating over whatever is behind them rather than as a card. The mask has
-   to sit on this element and not on a wrapper: a mask on an ancestor makes that ancestor the
-   backdrop root, and the pane's own backdrop-filter would then be blurring an empty box. */
-.lyrics-panel{left:50%;bottom:100px;width:min(560px,calc(100vw - 32px));max-height:min(46vh,420px);transform:translateX(-50%);
-  border-color:transparent;box-shadow:0 24px 60px rgba(52,58,101,.08);
-  -webkit-mask-image:linear-gradient(to bottom,#0000 0,#000 min(24px,18%),#000 calc(100% - min(28px,22%)),#0000 100%),linear-gradient(to right,#0000 0,#000 26px,#000 calc(100% - 26px),#0000 100%);
-  mask-image:linear-gradient(to bottom,#0000 0,#000 min(24px,18%),#000 calc(100% - min(28px,22%)),#0000 100%),linear-gradient(to right,#0000 0,#000 26px,#000 calc(100% - 26px),#0000 100%);
-  -webkit-mask-composite:source-in;mask-composite:intersect}
-.lyrics-panel::after{content:none}
+/* The lyrics panel is a liquid-glass container like every other pane — border, hairline, bevel and
+   the rim engine's bend (data-glass-edge) all apply; its edgeless mask is gone. */
+.lyrics-panel{left:50%;bottom:100px;width:min(560px,calc(100vw - 32px));max-height:min(46vh,420px);transform:translateX(-50%)}
 .projects-panel{right:18px;bottom:100px;width:min(330px,calc(100vw - 32px));max-height:min(58vh,520px)}
 /* The sheet hangs over the bar, so it is centred on the bar and not on the window: past 680px the
    bar itself is nudged right of the navigation rail, and a sheet centred on the viewport sat half
@@ -541,9 +531,8 @@
 .glass-panel-head{display:flex;align-items:start;justify-content:space-between;gap:12px}
 .glass-panel-head h3{margin:0;font:600 15px var(--font-sans);letter-spacing:-.03em;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .glass-empty{margin:12px 0 0;color:var(--muted);font-size:var(--text-md);line-height:1.6}
-/* The lines fade where the sheet's own fade is not enough: text scrolling out of a masked pane
-   would otherwise be cut off mid-glyph by the mask above it. Plain element, no backdrop-filter,
-   so a mask here costs nothing and has nothing to break. */
+/* The lines fade at the body's own scroll edges, so a long lyric does not end mid-glyph against
+   the pane's padding. Plain element, no backdrop-filter, so a mask here costs nothing. */
 .lyrics-body{margin-top:12px;padding-right:6px;overflow-y:auto;color:#3f455c;font-size:var(--text-lg);line-height:1.9;
   -webkit-mask-image:linear-gradient(to bottom,#0000 0,#000 16px,#000 calc(100% - 18px),#0000 100%);
   mask-image:linear-gradient(to bottom,#0000 0,#000 16px,#000 calc(100% - 18px),#0000 100%)}

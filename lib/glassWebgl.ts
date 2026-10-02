@@ -269,20 +269,37 @@ void main() {
 function compile(gl: WebGL2RenderingContext, type: number, source: string) {
   const shader = gl.createShader(type);
   if (!shader) throw new Error("shader");
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) ?? "shader");
-  return shader;
+  try {
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) ?? "shader");
+    return shader;
+  } catch (error) {
+    gl.deleteShader(shader);
+    throw error;
+  }
 }
 
 function link(gl: WebGL2RenderingContext, vertex: string, fragment: string) {
   const program = gl.createProgram();
   if (!program) throw new Error("program");
-  gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, vertex));
-  gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, fragment));
-  gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? "link");
-  return program;
+  let vertexShader: WebGLShader | null = null;
+  let fragmentShader: WebGLShader | null = null;
+  try {
+    vertexShader = compile(gl, gl.VERTEX_SHADER, vertex);
+    fragmentShader = compile(gl, gl.FRAGMENT_SHADER, fragment);
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? "link");
+    return program;
+  } catch (error) {
+    gl.deleteProgram(program);
+    throw error;
+  } finally {
+    if (vertexShader) gl.deleteShader(vertexShader);
+    if (fragmentShader) gl.deleteShader(fragmentShader);
+  }
 }
 
 const BLIT_VERTEX = `#version 300 es
@@ -508,12 +525,37 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
     program = link(gl, VERTEX_SOURCE, FRAGMENT_SOURCE);
     blurProgram = link(gl, BLIT_VERTEX, BLUR_FRAGMENT);
   } catch {
+    viewport.remove();
     return null;
   }
 
   const quad = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, quad);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+  const programCorner = gl.getAttribLocation(program, "corner");
+  const blurCorner = gl.getAttribLocation(blurProgram, "corner");
+  const paneUniforms = {
+    rect: gl.getUniformLocation(program, "rect"),
+    view: gl.getUniformLocation(program, "view"),
+    rasterSize: gl.getUniformLocation(program, "rasterSize"),
+    rasterOrigin: gl.getUniformLocation(program, "rasterOrigin"),
+    rasterRatio: gl.getUniformLocation(program, "rasterRatio"),
+    radius: gl.getUniformLocation(program, "radius"),
+    band: gl.getUniformLocation(program, "band"),
+    pull: gl.getUniformLocation(program, "pull"),
+    veil: gl.getUniformLocation(program, "veil"),
+    tint: gl.getUniformLocation(program, "tint"),
+    saturation: gl.getUniformLocation(program, "saturation"),
+    dispersion: gl.getUniformLocation(program, "dispersion"),
+    glow: gl.getUniformLocation(program, "glow"),
+    frosted: gl.getUniformLocation(program, "frosted"),
+  };
+  const blurUniforms = {
+    source: gl.getUniformLocation(blurProgram, "source"),
+    texel: gl.getUniformLocation(blurProgram, "texel"),
+    direction: gl.getUniformLocation(blurProgram, "direction"),
+    spacing: gl.getUniformLocation(blurProgram, "spacing"),
+  };
 
   // A lost context cannot be drawn from: the panes go back to the CSS rim rather than sit blank.
   viewport.addEventListener("webglcontextlost", (event) => {
@@ -543,6 +585,7 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
   let lastCaptureAt = 0;
   let lastSignature = "";
   let pending = 0;
+  let captureTimer = 0;
 
   root.classList.add("glass-webgl");
   root.classList.remove("glass-rim-fallback");
@@ -567,14 +610,18 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
     return buffer;
   }
 
+  function freeSurface(value: Surface) {
+    gl!.deleteTexture(value.texture);
+    gl!.deleteTexture(value.scratch);
+    if (value.frost) gl!.deleteTexture(value.frost);
+    gl!.deleteFramebuffer(value.framebuffer);
+    gl!.deleteFramebuffer(value.scratchFramebuffer);
+    if (value.frostFramebuffer) gl!.deleteFramebuffer(value.frostFramebuffer);
+  }
+
   function dropSurface() {
     if (!surface) return;
-    gl!.deleteTexture(surface.texture);
-    gl!.deleteTexture(surface.scratch);
-    if (surface.frost) gl!.deleteTexture(surface.frost);
-    gl!.deleteFramebuffer(surface.framebuffer);
-    gl!.deleteFramebuffer(surface.scratchFramebuffer);
-    if (surface.frostFramebuffer) gl!.deleteFramebuffer(surface.frostFramebuffer);
+    freeSurface(surface);
     surface = null;
   }
 
@@ -586,7 +633,7 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
     gl!.viewport(0, 0, width, height);
     gl!.useProgram(source);
     gl!.bindBuffer(gl!.ARRAY_BUFFER, quad);
-    const corner = gl!.getAttribLocation(source, "corner");
+    const corner = source === blurProgram ? blurCorner : programCorner;
     gl!.enableVertexAttribArray(corner);
     gl!.vertexAttribPointer(corner, 2, gl!.FLOAT, false, 0, 0);
     setup();
@@ -615,13 +662,24 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
    * visible blocks — the whole reason a rim looked like a smear of grey squares.
    */
   function buildSurface(raster: HTMLCanvasElement) {
-    dropSurface();
-    const next = makeSurface(raster.width, raster.height);
-    gl!.bindTexture(gl!.TEXTURE_2D, next.texture);
-    gl!.pixelStorei(gl!.UNPACK_FLIP_Y_WEBGL, false);
-    gl!.texImage2D(gl!.TEXTURE_2D, 0, gl!.RGBA, gl!.RGBA, gl!.UNSIGNED_BYTE, raster);
-    surface = next;
-    gl!.bindFramebuffer(gl!.FRAMEBUFFER, null);
+    const maxTextureSize = gl!.getParameter(gl!.MAX_TEXTURE_SIZE) as number;
+    if (raster.width > maxTextureSize || raster.height > maxTextureSize) return false;
+    try {
+      const next = makeSurface(raster.width, raster.height);
+      gl!.bindTexture(gl!.TEXTURE_2D, next.texture);
+      gl!.pixelStorei(gl!.UNPACK_FLIP_Y_WEBGL, false);
+      gl!.texImage2D(gl!.TEXTURE_2D, 0, gl!.RGBA, gl!.RGBA, gl!.UNSIGNED_BYTE, raster);
+      if (gl!.getError() !== gl!.NO_ERROR) {
+        freeSurface(next);
+        return false;
+      }
+      dropSurface();
+      surface = next;
+      gl!.bindFramebuffer(gl!.FRAMEBUFFER, null);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -645,10 +703,10 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
       gl!.activeTexture(gl!.TEXTURE0);
       gl!.bindTexture(gl!.TEXTURE_2D, from);
       drawQuad(framebuffer, target.width, target.height, blurProgram, () => {
-        gl!.uniform1i(gl!.getUniformLocation(blurProgram, "source"), 0);
-        gl!.uniform2f(gl!.getUniformLocation(blurProgram, "texel"), 1 / target.width, 1 / target.height);
-        gl!.uniform2f(gl!.getUniformLocation(blurProgram, "direction"), direction[0], direction[1]);
-        gl!.uniform1f(gl!.getUniformLocation(blurProgram, "spacing"), spacing);
+        gl!.uniform1i(blurUniforms.source, 0);
+        gl!.uniform2f(blurUniforms.texel, 1 / target.width, 1 / target.height);
+        gl!.uniform2f(blurUniforms.direction, direction[0], direction[1]);
+        gl!.uniform1f(blurUniforms.spacing, spacing);
       });
     };
     pass(target.texture, target.scratchFramebuffer, [1, 0]);
@@ -792,7 +850,7 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
       gl!.viewport(0, 0, width, height);
       gl!.useProgram(program);
       gl!.bindBuffer(gl!.ARRAY_BUFFER, quad);
-      const corner = gl!.getAttribLocation(program, "corner");
+      const corner = programCorner;
       gl!.enableVertexAttribArray(corner);
       gl!.vertexAttribPointer(corner, 2, gl!.FLOAT, false, 0, 0);
     }
@@ -830,13 +888,13 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
       // framebuffer behind — the pane's own state has to be taken back before touching uniforms.
       bindPane();
       // GL's origin is bottom-left; the pane's top edge in that space is height - originY.
-      gl!.uniform4f(gl!.getUniformLocation(program, "rect"), originX, height - originY - paneHeight, paneWidth, paneHeight);
-      gl!.uniform2f(gl!.getUniformLocation(program, "view"), width, height);
-      gl!.uniform2f(gl!.getUniformLocation(program, "rasterSize"), rasterWidth, rasterHeight);
-      gl!.uniform1f(gl!.getUniformLocation(program, "rasterRatio"), rasterScale / dpr);
+      gl!.uniform4f(paneUniforms.rect, originX, height - originY - paneHeight, paneWidth, paneHeight);
+      gl!.uniform2f(paneUniforms.view, width, height);
+      gl!.uniform2f(paneUniforms.rasterSize, rasterWidth, rasterHeight);
+      gl!.uniform1f(paneUniforms.rasterRatio, rasterScale / dpr);
       // Read from the live scroll, not from the capture: this is what makes a scroll cost a
       // redraw and nothing else.
-      gl!.uniform2f(gl!.getUniformLocation(program, "rasterOrigin"),
+      gl!.uniform2f(paneUniforms.rasterOrigin,
         (window.scrollX - rasterLeft) * rasterScale,
         (window.scrollY - rasterTop) * rasterScale);
       // A radius past half the short side is clamped by the browser when it paints the box — a
@@ -846,10 +904,10 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
       // its bubble, both 999px, were doing. Both terms are device px: the field is built from
       // halfSize, which is the pane's box in device px.
       const halfShort = Math.min(paneWidth, paneHeight) / 2;
-      gl!.uniform1f(gl!.getUniformLocation(program, "radius"), Math.min(pane.radius * dpr, halfShort));
-      gl!.uniform1f(gl!.getUniformLocation(program, "band"), band);
-      gl!.uniform1f(gl!.getUniformLocation(program, "pull"), pull);
-      gl!.uniform1f(gl!.getUniformLocation(program, "veil"), pane.veil);
+      gl!.uniform1f(paneUniforms.radius, Math.min(pane.radius * dpr, halfShort));
+      gl!.uniform1f(paneUniforms.band, band);
+      gl!.uniform1f(paneUniforms.pull, pull);
+      gl!.uniform1f(paneUniforms.veil, pane.veil);
       // The ink sampler darkens a pane's tint as its backdrop darkens, and it does that on its
       // own 250ms clock — the handle never hears about it. Reading the property the sampler wrote
       // here, from the pane's inline style (no style flush, no getComputedStyle) is what keeps the
@@ -857,16 +915,16 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
       const shade = Number(pane.element.style.getPropertyValue("--glass-shade")) || 0;
       const tint = pane.tint;
       const lit = 1 - Math.min(1, Math.max(0, shade)) * SHADE_MAX;
-      gl!.uniform3f(gl!.getUniformLocation(program, "tint"), tint[0] * lit, tint[1] * lit, tint[2] * lit);
-      gl!.uniform1f(gl!.getUniformLocation(program, "saturation"), pane.saturation);
-      gl!.uniform1f(gl!.getUniformLocation(program, "dispersion"), Math.min(1, Math.max(0, parameters.dispersion)));
+      gl!.uniform3f(paneUniforms.tint, tint[0] * lit, tint[1] * lit, tint[2] * lit);
+      gl!.uniform1f(paneUniforms.saturation, pane.saturation);
+      gl!.uniform1f(paneUniforms.dispersion, Math.min(1, Math.max(0, parameters.dispersion)));
       // The prism's gain, like the shade above: written inline by the ink sampler on its own
       // clock, read here without a style flush. 1 until the sampler has looked at this pane.
       const glow = Number.parseFloat(pane.element.style.getPropertyValue("--glass-glow"));
-      gl!.uniform1f(gl!.getUniformLocation(program, "glow"), Number.isFinite(glow) ? Math.min(1, Math.max(0, glow)) : 1);
+      gl!.uniform1f(paneUniforms.glow, Number.isFinite(glow) ? Math.min(1, Math.max(0, glow)) : 1);
       gl!.activeTexture(gl!.TEXTURE0);
       gl!.bindTexture(gl!.TEXTURE_2D, frosted);
-      gl!.uniform1i(gl!.getUniformLocation(program, "frosted"), 0);
+      gl!.uniform1i(paneUniforms.frosted, 0);
       if (right <= left || bottom <= top) { clear(); return; }
       // Scissored to the pane's own box, so two panes that overlap cannot bleed into each
       // other's canvas: each region is cleared and redrawn for the pane that owns it.
@@ -1042,12 +1100,14 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
     try {
       image = await load(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
     } catch {
+      let url: string | null = null;
       try {
-        const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+        url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
         image = await load(url);
-        URL.revokeObjectURL(url);
       } catch {
         return null;
+      } finally {
+        if (url) URL.revokeObjectURL(url);
       }
     }
     const context = raster.getContext("2d");

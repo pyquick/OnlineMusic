@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { hasTiming, lineAt, lineEnd, lineFill, tokenProgress, type LyricsDoc } from "@/shared/lyrics";
+import { hasTiming, hasWordTiming, lineAt, lineEnd, lineFill, tokenProgress, type LyricsDoc } from "@/shared/lyrics";
 
 /**
  * The playback synchroniser — the engine between the timeline and the renderer.
@@ -105,7 +105,9 @@ export function useLyricsSync(media: RefObject<HTMLMediaElement | null>, doc: Ly
         painted.current = { line, index: -2 };
         spans.current = Array.from(sheet.querySelectorAll<HTMLElement>(`[data-lyr-line="${line}"] .lyr-token`));
       }
-      if (!entry.tokens?.length) {
+      // Words drive the fill only once they carry times; until then the line fills as one span,
+      // exactly as it does when it has no tokens at all.
+      if (!hasWordTiming(entry)) {
         const span = spans.current[0];
         if (span) span.style.setProperty("--lyr-fill", `${(lineFill(lyrics, line, t) * 100).toFixed(2)}%`);
         return;

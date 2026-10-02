@@ -14,10 +14,10 @@ export const MAX_TOKEN_TEXT_LENGTH = 200;
 
 export interface LyricsToken {
   text: string;
-  /** Seconds. */
-  start: number;
-  /** Seconds. */
-  end: number;
+  /** Seconds; absent until the word is timed, so a line can be tokenized before it is timed. */
+  start?: number;
+  /** Seconds; absent until the word is timed. */
+  end?: number;
 }
 
 export interface LyricsLine {

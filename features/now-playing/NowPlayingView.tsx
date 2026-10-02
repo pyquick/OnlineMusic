@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { ChevronUp, List, MessageSquareQuote, Music2, Repeat, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react";
+import { ChevronUp, List, MessageSquareQuote, Music2, Repeat, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X } from "@/design-system/components/icons";
 import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyphs";
 import { SeekBar } from "@/features/player";
 import { PlaybackLyrics } from "@/features/lyrics";

@@ -1,7 +1,7 @@
 "use client";
 
 import type { RefObject } from "react";
-import { Activity, Pause, Play, SlidersHorizontal, X } from "lucide-react";
+import { Activity, Pause, Play, SlidersHorizontal, X } from "@/design-system/components/icons";
 import { RangeControl } from "@/design-system/components/RangeControl";
 import { WaveformTrack } from "@/features/player";
 

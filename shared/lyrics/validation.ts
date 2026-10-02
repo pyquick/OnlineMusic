@@ -47,11 +47,13 @@ function textValue(value: unknown, field: string, maxLength: number, allowEmpty:
 
 function tokenValue(value: unknown, field: string): LyricsToken {
   if (!isRecord(value)) throw new LyricsValidationError(`${field} must be an object`);
-  return {
-    text: textValue(value.text, `${field}.text`, MAX_TOKEN_TEXT_LENGTH, true),
-    start: timeValue(value.start, `${field}.start`),
-    end: timeValue(value.end, `${field}.end`),
-  };
+  // Times are optional: a token may exist before it is timed (tokenize without a span).
+  const token: LyricsToken = { text: textValue(value.text, `${field}.text`, MAX_TOKEN_TEXT_LENGTH, true) };
+  const start = optionalTime(value.start, `${field}.start`);
+  if (start !== undefined) token.start = start;
+  const end = optionalTime(value.end, `${field}.end`);
+  if (end !== undefined) token.end = end;
+  return token;
 }
 
 function lineValue(value: unknown, index: number): LyricsLine {

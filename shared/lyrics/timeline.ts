@@ -13,6 +13,15 @@ export function hasTiming(doc: LyricsDoc): boolean {
 }
 
 /**
+ * Whether a line's words carry times at all. A line tokenized before it is timed has tokens whose
+ * times are absent; those render and fill as one whole-line span, exactly like a line with no
+ * tokens — the token layer only takes over once there is word timing to drive it.
+ */
+export function hasWordTiming(line: LyricsLine): boolean {
+  return (line.tokens ?? []).some((token) => typeof token.start === "number" && typeof token.end === "number");
+}
+
+/**
  * A line's effective end: its own, else the next timed line's start (a gap still ends it), else
  * its last token's end. Infinity when nothing says — the last line of a document with no tokens.
  */
@@ -25,8 +34,11 @@ export function lineEnd(doc: LyricsDoc, index: number): number {
     if (typeof start === "number") return start;
   }
   const tokens = line.tokens;
-  const last = tokens?.[tokens.length - 1];
-  if (last) return last.end;
+  // The last *timed* token ends it; untimed ones say nothing about the line.
+  for (let token = (tokens?.length ?? 0) - 1; token >= 0; token -= 1) {
+    const end = tokens?.[token].end;
+    if (typeof end === "number") return end;
+  }
   return Number.POSITIVE_INFINITY;
 }
 
@@ -63,26 +75,32 @@ export function lineFill(doc: LyricsDoc, index: number, t: number): number {
   return clamp((t - line.start) / (end - line.start));
 }
 
+/** A token without both times has nothing to fill: it is simply not part of the timeline yet. */
 export function tokenFill(token: LyricsToken, t: number): number {
+  if (typeof token.start !== "number" || typeof token.end !== "number") return 0;
   if (token.end <= token.start) return t >= token.end ? 1 : 0;
   return clamp((t - token.start) / (token.end - token.start));
 }
 
 /**
  * The renderer's one question per frame, per line: which token is live and how far through.
- * `index === tokens.length` means every token has played; `-1` means none has started.
+ * `index === tokens.length` means every token has played; `-1` means none has started. Untimed
+ * tokens take no part — they neither become live nor stop the walk past them.
  */
 export function tokenProgress(line: LyricsLine, t: number): { index: number; fill: number } {
   const tokens = line.tokens ?? [];
   if (tokens.length === 0) return { index: -1, fill: 0 };
   let index = -1;
   for (let position = 0; position < tokens.length; position += 1) {
-    if (tokens[position].start <= t) index = position;
+    const start = tokens[position].start;
+    if (typeof start !== "number") continue;
+    if (start <= t) index = position;
     else break;
   }
   if (index === -1) return { index: -1, fill: 0 };
-  if (index === tokens.length - 1 && t >= tokens[index].end) return { index: tokens.length, fill: 1 };
-  return { index, fill: tokenFill(tokens[index], t) };
+  const last = tokens[index];
+  if (index === tokens.length - 1 && typeof last.end === "number" && t >= last.end) return { index: tokens.length, fill: 1 };
+  return { index, fill: tokenFill(last, t) };
 }
 
 /** The end of everything timed in the document, for the editor's waveform and export. */
@@ -93,7 +111,7 @@ export function docDuration(doc: LyricsDoc): number {
     if (typeof line.start !== "number" && !line.tokens?.length) continue;
     const value = lineEnd(doc, index);
     if (Number.isFinite(value) && value > end) end = value;
-    for (const token of line.tokens ?? []) if (token.end > end) end = token.end;
+    for (const token of line.tokens ?? []) if (typeof token.end === "number" && token.end > end) end = token.end;
   }
   return round3(end);
 }

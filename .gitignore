@@ -8,10 +8,12 @@ node_modules
 .next
 out
 build
-
+*.png
+*.mp3
+*.mp4
 # typescript
 *.tsbuildinfo
-
+*probe*
 # runtime data (accounts, uploaded assets) — never commit
 data/
 
