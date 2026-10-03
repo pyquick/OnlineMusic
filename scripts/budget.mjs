@@ -27,7 +27,11 @@ const LIMITS = {
   // 2026-10-02: held at 18.0. The settings preview's mock scene briefly pushed the total to
   // 18.1 and the ceiling to 18.25; the scene then became a photograph (one rule), which put the
   // total back at 17.9 — so the 18.0 ceiling stands rather than keeping the raise.
-  cssGz: 18_000,
+  // 2026-10-03: raised to 18.2. The phone's video player (a row of four glass pieces and the name
+  // card above them) and the bar's transport icons joining the adaptive ink are real surfaces;
+  // the dead weight around them went first — the dock's inline positioning (always overridden by
+  // its hit zone), a duplicated rail rule, its own veil — and the total still measured 18.12.
+  cssGz: 18_200,
   largestChunkGz: 58_000, // the shared vendor chunk, measured 53.7 kB gz
 };
 

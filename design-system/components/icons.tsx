@@ -9,8 +9,10 @@
  * The play and pause are the transport's own filled glyphs (TransportGlyphs) — the same two the
  * bar, the dock and the disc have always shown — so the family has one transport language.
  *
- * Stroke width, caps and joins are defaults: a caller may still override any SVG prop, which is
- * how the now-playing transport asks for `fill="currentColor"` on the solid skips.
+ * Stroke width, caps and joins are defaults: a caller may still override any SVG prop. The two
+ * skips are the exception to the outline family — they are solid triangles with a bar, the way a
+ * transport's skips are cut (2026-10-03, the user's "改为实心的"): the Apple pair is the SF
+ * Symbols *fill* variant, the drawn pair fills its triangle and keeps its stroke for the join.
  *
  * Where the studio's vocabulary overlaps Apple's, the glyph is now the real thing: house, music
  * note, albums, library, gear, lyrics bubble, pencil, shuffle, repeat, both skips, the speaker
@@ -462,11 +464,11 @@ export function Pause(props: IconProps) {
   return <PauseGlyph size={props.size ?? 24} />;
 }
 
-/** The SF Symbols export — Apple platforms only, see `useAppleGlyphs`. */
+/** The SF Symbols export's fill variant — Apple platforms only, see `useAppleGlyphs`. */
 function AppleSkipBack(props: IconProps) {
   return (
     <Glyph frame="0 0 36.4648 18.9746" {...props}>
-      <path d="M33.5 17.4 33.5 1.6 C33.5 .5 32.8 0 32.1 0 C31.8 0 31.4 .1 31.1 .3 L17.9 8 C17 8.5 16.7 8.9 16.7 9.5 C16.7 10.1 17 10.4 17.9 10.9 L31.1 18.7 C31.4 18.9 31.8 19 32.1 19 C32.8 19 33.5 18.5 33.5 17.4 ZM31.8 16.6 C31.8 16.7 31.7 16.9 31.5 16.9 C31.4 16.9 31.4 16.8 31.3 16.8 L19.2 9.7 C19.1 9.6 19.1 9.6 19.1 9.5 C19.1 9.4 19.1 9.3 19.2 9.3 L31.3 2.1 C31.4 2.1 31.4 2.1 31.5 2.1 C31.7 2.1 31.8 2.2 31.8 2.4 ZM16.8 17.4 16.8 1.6 C16.8 .5 16.1 0 15.4 0 C15.1 0 14.7 .1 14.4 .3 L1.2 8 C.3 8.5 0 8.9 0 9.5 C0 10.1 .3 10.4 1.2 10.9 L14.4 18.7 C14.7 18.9 15.1 19 15.4 19 C16.1 19 16.8 18.5 16.8 17.4 ZM15 16.6 C15 16.7 14.9 16.9 14.8 16.9 C14.7 16.9 14.7 16.8 14.6 16.8 L2.5 9.7 C2.4 9.6 2.4 9.6 2.4 9.5 C2.4 9.4 2.4 9.3 2.5 9.3 L14.6 2.1 C14.7 2.1 14.7 2.1 14.8 2.1 C14.9 2.1 15 2.2 15 2.4 Z" />
+      <path d="M33.5 17.4L33.5 1.6C33.5 .5 32.8 0 32.1 0C31.8 0 31.4 .1 31.1 .3L17.9 8C17 8.5 16.7 8.9 16.7 9.5C16.7 10.1 17 10.4 17.9 10.9L31.1 18.7C31.4 18.9 31.8 19 32.1 19C32.8 19 33.5 18.5 33.5 17.4ZM16.8 17.4L16.8 1.6C16.8 .5 16.1 0 15.4 0C15.1 0 14.7 .1 14.4 .3L1.2 8C.3 8.5 0 8.9 0 9.5C0 10.1 .3 10.4 1.2 10.9L14.4 18.7C14.7 18.9 15.1 19 15.4 19C16.1 19 16.8 18.5 16.8 17.4Z" />
     </Glyph>
   );
 }
@@ -476,16 +478,16 @@ export function SkipBack(props: IconProps) {
   return apple ? <AppleSkipBack {...props} /> : (
     <Icon {...props}>
       <path d="M6.9 6.2v11.6" />
-      <path d="M18.3 7.4v9.2c0 1.2-1.3 1.9-2.3 1.3l-7-4.6a1.55 1.55 0 0 1 0-2.6l7-4.6c1-.6 2.3.1 2.3 1.3Z" />
+      <path d="M18.3 7.4v9.2c0 1.2-1.3 1.9-2.3 1.3l-7-4.6a1.55 1.55 0 0 1 0-2.6l7-4.6c1-.6 2.3.1 2.3 1.3Z" fill="currentColor" />
     </Icon>
   );
 }
 
-/** The SF Symbols export — Apple platforms only, see `useAppleGlyphs`. */
+/** The SF Symbols export's fill variant — Apple platforms only, see `useAppleGlyphs`. */
 function AppleSkipForward(props: IconProps) {
   return (
     <Glyph frame="0 0 35.7422 18.9746" {...props}>
-      <path d="M2.3 17.4 C2.3 18.5 2.9 19 3.6 19 C4 19 4.3 18.9 4.6 18.7 L17.9 10.9 C18.7 10.4 19 10.1 19 9.5 C19 8.9 18.7 8.5 17.9 8 L4.6 .3 C4.3 .1 4 0 3.6 0 C2.9 0 2.3 .5 2.3 1.6 ZM4 16.6 4 2.4 C4 2.2 4.1 2.1 4.2 2.1 C4.3 2.1 4.3 2.1 4.4 2.1 L16.5 9.3 C16.6 9.3 16.7 9.4 16.7 9.5 C16.7 9.6 16.6 9.6 16.5 9.7 L4.4 16.8 C4.3 16.8 4.3 16.9 4.2 16.9 C4.1 16.9 4 16.7 4 16.6 ZM19 17.4 C19 18.5 19.6 19 20.4 19 C20.7 19 21 18.9 21.3 18.7 L34.6 10.9 C35.4 10.4 35.7 10.1 35.7 9.5 C35.7 8.9 35.4 8.5 34.6 8 L21.3 .3 C21 .1 20.7 0 20.4 0 C19.6 0 19 .5 19 1.6 ZM20.7 16.6 20.7 2.4 C20.7 2.2 20.8 2.1 20.9 2.1 C21 2.1 21.1 2.1 21.1 2.1 L33.2 9.3 C33.3 9.3 33.4 9.4 33.4 9.5 C33.4 9.6 33.3 9.6 33.2 9.7 L21.1 16.8 C21.1 16.8 21 16.9 20.9 16.9 C20.8 16.9 20.7 16.7 20.7 16.6 Z" />
+      <path d="M2.3 17.4C2.3 18.5 2.9 19 3.6 19C4 19 4.3 18.9 4.6 18.7L17.9 10.9C18.7 10.4 19 10.1 19 9.5C19 8.9 18.7 8.5 17.9 8L4.6 .3C4.3 .1 4 0 3.6 0C2.9 0 2.3 .5 2.3 1.6ZM19 17.4C19 18.5 19.6 19 20.4 19C20.7 19 21 18.9 21.3 18.7L34.6 10.9C35.4 10.4 35.7 10.1 35.7 9.5C35.7 8.9 35.4 8.5 34.6 8L21.3 .3C21 .1 20.7 0 20.4 0C19.6 0 19 .5 19 1.6Z" />
     </Glyph>
   );
 }
@@ -495,7 +497,7 @@ export function SkipForward(props: IconProps) {
   return apple ? <AppleSkipForward {...props} /> : (
     <Icon {...props}>
       <path d="M17.1 6.2v11.6" />
-      <path d="M5.7 7.4v9.2c0 1.2 1.3 1.9 2.3 1.3l7-4.6a1.55 1.55 0 0 0 0-2.6l-7-4.6c-1-.6-2.3.1-2.3 1.3Z" />
+      <path d="M5.7 7.4v9.2c0 1.2 1.3 1.9 2.3 1.3l7-4.6a1.55 1.55 0 0 0 0-2.6l-7-4.6c-1-.6-2.3.1-2.3 1.3Z" fill="currentColor" />
     </Icon>
   );
 }

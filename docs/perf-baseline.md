@@ -77,7 +77,7 @@ biggest server-side win available, and it is measurable as request latency on `/
 | Metric | Budget | measured |
 | --- | --- | --- |
 | First Load JS on `/` | ≤ 138 kB gz (see `scripts/budget.mjs`) | **137.5 kB** (2026-10-03, after the SF Symbols split: the icon module carries both the hand-drawn set and Apple's inlined glyphs, swapped per platform at runtime). Before that swap the same build measured 131.7 kB; 131.4 kB after the glass-boundary change; 122.2 at P3.3 |
-| CSS (gz, all shipped files) | ≤ 18 kB | **18.0 kB** — at the ceiling (the settings preview photo and per-control UI brought it here; the boundary change touched no CSS) |
+| CSS (gz, all shipped files) | ≤ 18.2 kB | **18.12 kB** (2026-10-03: the phone's video bar — a row of four glass pieces with the name card above them — and the player bar's transport icons joining the adaptive ink; the ceiling moved 18.0 → 18.2 only after the dead dock positioning, a duplicated rail rule and the dock's own veil were removed) |
 | Largest chunk (gz) | ≤ 58 kB | 53.7 kB |
 | Interaction (scroll / drag) p95 | ≤ 20 ms | 17.6 ms |
 | Long tasks | 0 over 50 ms during scroll, playback, or a slider drag | 0 |

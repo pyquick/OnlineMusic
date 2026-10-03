@@ -107,11 +107,10 @@
   .player.glass-bar{bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 18px);width:calc(100% - 20px);min-height:0;padding:8px 14px;border-radius:999px;grid-template-columns:minmax(0,1fr) auto;gap:12px}
   .player.glass-bar .player-controls{gap:8px}
   .player.glass-bar .mini-cover{width:42px;height:42px;border-radius:14px}
-  .player.glass-bar .player-button svg{width:24px;height:24px}
+  .player.glass-bar .player-button svg{width:30px;height:30px}
   /* The sheets hang above the bar, and the bar is above the pill. */
   .lyrics-panel{bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 86px)}
   .projects-panel{right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 86px);width:calc(100vw - 20px)}
-  .video-overlay .video-player-dock{bottom:calc(env(safe-area-inset-bottom,0px) + var(--pill-h,64px) + 18px)}
 }
 
 
@@ -129,7 +128,7 @@
 /* The play/pause is a solid glyph, not a filled disc: no chrome of its own, and
    nothing changes under the pointer. It is scoped to the bar so the video dock's
    own purple button keeps its look. */
-.glass-bar .player-button{width:auto;height:auto;padding:5px;border-radius:0;background:none;box-shadow:none;color:var(--ink)}
+.glass-bar .player-button{width:auto;height:auto;padding:4px}
 .glass-bar .player-button:disabled{opacity:.3}
 /* Step and mode buttons: plain icons beside the glyph. Shuffle and repeat are
    only offered when the list holds more than one audio file, and they light up
@@ -138,6 +137,13 @@
 .transport-step:disabled,.transport-extra:disabled{opacity:.28;cursor:default}
 .transport-extra{color:var(--muted)}
 .transport-extra.is-on{color:var(--accent)}
+/* The bar's transport glyphs follow the scene under the glass exactly as the words beside them
+   do: the sampler writes one mix per pane (an SVG holds no text run to wear its own), and the
+   icons ride it — black on paper, white over a dark cover, with the lit shuffle/repeat keeping
+   the accent at rest and the nav's light accent on a dark scene. The step keys are in the shared
+   rule above; the dimmed mode keys ramp from the muted grey instead. */
+.glass-bar :where(.transport-extra){color:color-mix(in srgb,#fff var(--ink-mix,0%),var(--muted))}
+.glass-bar .transport-extra.is-on{color:color-mix(in srgb,#ffb3b6 var(--ink-mix,0%),var(--accent))}
 
 /* ── The phone's top bar ─────────────────────────────────────────────────────
    Not the wide layout's capsule: a slab glued to a 390px window would only eat the page, and
