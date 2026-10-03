@@ -39,7 +39,11 @@
 .now-body.is-drawer-closed{grid-template-columns:minmax(0,1fr) minmax(0,0px);gap:0}
 .now-drawer{position:relative;min-width:0;align-self:stretch;display:flex;flex-direction:column;justify-content:center}
 .now-stage{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(12px,2.2vh,24px);text-align:center}
-.now-art{width:min(42vh,420px);max-width:100%;aspect-ratio:1/1;border-radius:22px;overflow:hidden;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#e5484d,#8f2027);box-shadow:0 38px 74px rgba(4,5,12,.55),0 3px 10px rgba(4,5,12,.4)}
+.now-art{width:min(42vh,420px);max-width:100%;aspect-ratio:1/1;border-radius:22px;overflow:hidden;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#e5484d,#8f2027);box-shadow:0 38px 74px rgba(4,5,12,.55),0 3px 10px rgba(4,5,12,.4);transition:scale .42s var(--ease-glass)}
+/* While nothing is playing the artwork rests a step smaller and grows back to its full square the
+   moment the song runs again — size alone, animated, so the stage never jumps. `scale`, not
+   `transform`: the phone's slide already owns `translate` on this same element. */
+.now-art.is-resting{scale:.85}
 .now-art.is-empty{background:linear-gradient(135deg,rgba(255,255,255,.18),rgba(255,255,255,.05));color:rgba(255,255,255,.72)}
 .now-art img{width:100%;height:100%;object-fit:cover;display:block}
 .now-art-wrap{position:relative}
@@ -176,7 +180,7 @@
   /* The artwork yields its slot to the words and to nothing else: the queue rises as a sheet over
      the transport instead, so the cover stays where it is while the songs are up. */
   .now-body:not(.is-lyrics-panel) .now-art{translate:0 calc(-1 * var(--now-lift,0px))}
-  .now-body.is-lyrics-panel .now-art{translate:calc(var(--now-reveal,0) * (-50vw - 50% - 8px)) calc(-1 * var(--now-lift,0px));transition:translate .34s var(--ease-glass)}
+  .now-body.is-lyrics-panel .now-art{translate:calc(var(--now-reveal,0) * (-50vw - 50% - 8px)) calc(-1 * var(--now-lift,0px));transition:translate .34s var(--ease-glass),scale .42s var(--ease-glass)}
   /* The words carry their own place in the layout; the sheet is the queue's, so it steps aside. */
   .now-body.is-lyrics-panel .now-drawer{display:none}
   .now-words{display:flex;flex-direction:column;opacity:0;visibility:hidden;

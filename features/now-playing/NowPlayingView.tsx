@@ -63,11 +63,11 @@ export default function NowPlayingView({
 }: NowPlayingViewProps) {
   const [panel, setPanel] = useState<"queue" | "lyrics">("queue");
   /**
-   * The right column is the corner switch's disclosure: the switch holding focus is what keeps the
-   * panel open, and the moment focus leaves it the column gives its width back to the stage — which
-   * is what puts the transport back in the middle of the window. The lit disc belongs to that held
-   * state and goes with it, so a view nobody is pointing at shows two plain icons and no selection
-   * at all — a click on the empty glass then leaves nothing behind, neither panel nor highlight.
+   * The right column is the corner switch's disclosure, and the switch is its *only* hand: pressing
+   * a side opens it, pressing the side already showing puts it away — the closed column gives its
+   * width back to the stage, which is what puts the transport back in the middle of the window. The
+   * lit disc belongs to the open state and goes with it. A click anywhere else — the empty glass,
+   * the artwork, the transport — changes nothing, so the panel stays exactly where it was put.
    */
   const [drawer, setDrawer] = useState(false);
   /** Live progress of the small screen's lyrics gesture, 0 at rest and 1 fully open. */
@@ -83,7 +83,7 @@ export default function NowPlayingView({
   const titlesRef = useRef<HTMLDivElement>(null);
 
   // The sheet and the artwork are one position: whatever opens or closes the drawer — the swipe,
-  // Escape, focus landing on a row — the artwork steps out or comes back with it.
+  // Escape, the corner switch — the artwork steps out or comes back with it.
   useEffect(() => { setReveal(drawer ? 1 : 0); }, [drawer]);
 
   /**
@@ -213,6 +213,17 @@ export default function NowPlayingView({
     setReveal(Math.max(0, Math.min(1, state.from + travel / 220)));
   }
 
+  /**
+   * The corner switch's own logic, shared by its two sides: a press on the side already showing
+   * puts the panel away, a press on either other side shows that one — so the switch is a true
+   * toggle and the view needs no other way of opening or closing the column.
+   */
+  function togglePanel(next: "queue" | "lyrics") {
+    if (drawer && panel === next) { setDrawer(false); return; }
+    setPanel(next);
+    setDrawer(true);
+  }
+
   function onGestureEnd(event: ReactPointerEvent<HTMLElement>) {
     const state = gesture.current;
     gesture.current = null;
@@ -268,7 +279,7 @@ export default function NowPlayingView({
           onPointerDown={onGestureStart} onPointerMove={onGestureMove} onPointerUp={onGestureEnd}
           onPointerCancel={() => { gesture.current = null; setAxis(null); }}>
           <div className="now-art-wrap" ref={artWrapRef}>
-            <div className={`now-art ${track && cover ? "" : "is-empty"}`}>{track && cover ? <img src={cover} alt="" /> : <Music2 size={72} />}</div>
+            <div className={`now-art ${track && cover ? "" : "is-empty"} ${playing && track ? "" : "is-resting"}`}>{track && cover ? <img src={cover} alt="" /> : <Music2 size={72} />}</div>
             {/* The words take the artwork's place — the phone's original reading of them, kept for
                 the words alone: what rises from the bottom now is the songs that come next. */}
             {compact && panel === "lyrics" && <div className="now-words"><PlaybackLyrics doc={lyrics} media={media} variant="words" /></div>}
@@ -286,7 +297,7 @@ export default function NowPlayingView({
             <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={onToggleLoop} disabled={!canStep} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={19} /></button>
           </div>
         </div>
-        <div className={`now-drawer ${handoff ? "is-handoff" : ""}`} onFocus={() => setDrawer(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDrawer(false); }}>
+        <div className={`now-drawer ${handoff ? "is-handoff" : ""}`}>
           <aside className={`now-queue ${panel === "lyrics" ? "is-lyrics" : ""}`}>
             {panel === "queue" && <header><div className="now-queue-copy"><h3>Continue playing</h3><p>{track?.album ? `From ${track.album}` : "From all songs"}</p></div></header>}
             {/* On the phone the drawer is not the words' home — they stand in the artwork's slot —
@@ -301,8 +312,8 @@ export default function NowPlayingView({
           {/* The fullscreen sheet is for reading and nothing else: no editing entry lives here
               (the user's rule) — the workspace is opened from the Home screen instead. */}
           <div className="now-switch" role="tablist" aria-label="Right panel">
-            <button role="tab" aria-selected={drawer && panel === "lyrics"} className={drawer && panel === "lyrics" ? "is-on" : ""} onClick={() => { setPanel("lyrics"); setDrawer(true); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button>
-            <button role="tab" aria-selected={drawer && panel === "queue"} className={drawer && panel === "queue" ? "is-on" : ""} onClick={() => { setPanel("queue"); setDrawer(true); }} aria-label="Continue playing" title="Continue playing"><List size={17} /></button>
+            <button role="tab" aria-selected={drawer && panel === "lyrics"} className={drawer && panel === "lyrics" ? "is-on" : ""} onClick={() => togglePanel("lyrics")} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button>
+            <button role="tab" aria-selected={drawer && panel === "queue"} className={drawer && panel === "queue" ? "is-on" : ""} onClick={() => togglePanel("queue")} aria-label="Continue playing" title="Continue playing"><List size={17} /></button>
           </div>
         </div>
       </div>
