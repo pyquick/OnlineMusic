@@ -417,7 +417,7 @@
   background:color-mix(in srgb,var(--accent-soft) calc(var(--glass-alpha,1) * 100%),transparent);
   -webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));
   backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
-:is(.search-input,.metadata-panel input,.metadata-float input,.auth-form input){--glass-group:field;
+:is(.search-input,.metadata-panel input,.metadata-float input,.auth-form input,.server-field){--glass-group:field;
   background:color-mix(in srgb,var(--panel2) calc(var(--glass-alpha,1) * 100%),transparent);
   -webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));
   backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}

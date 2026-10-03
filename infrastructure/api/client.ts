@@ -11,6 +11,8 @@
  * response the caller reads line by line, so it is handed back raw.
  */
 
+import { resolveApiUrl } from "@/infrastructure/api/base";
+
 /** How long a request may sit before it is abandoned. Long enough for a 250 MB upload to land. */
 const DEFAULT_TIMEOUT_MS = 120_000;
 
@@ -52,7 +54,7 @@ async function request<T>(method: string, path: string, body: unknown, options: 
       init.headers = { "Content-Type": "application/json" };
       init.body = JSON.stringify(body);
     }
-    response = await fetch(path, init);
+    response = await fetch(resolveApiUrl(path), init);
   } catch (error) {
     const aborted = controller.signal.aborted && !options.signal?.aborted;
     throw new ApiError(aborted ? "The request timed out." : "Could not reach the server.", 0);
@@ -90,7 +92,7 @@ export async function apiStream(path: string, options: Options = {}): Promise<Re
   const abort = () => controller.abort();
   options.signal?.addEventListener("abort", abort);
   try {
-    const response = await fetch(path, { credentials: "include", cache: "no-store", signal: controller.signal });
+    const response = await fetch(resolveApiUrl(path), { credentials: "include", cache: "no-store", signal: controller.signal });
     if (!response.ok) throw new ApiError(`Request failed (${response.status})`, response.status);
     return response;
   } catch (error) {

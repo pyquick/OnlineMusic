@@ -1,0 +1,12 @@
+# The HTTPS edge in front of the API (see the commented `proxy` service in docker-compose.yml).
+#
+# Replace the host below with this machine's address — a domain, or its LAN IP for home use:
+#   https://192.168.1.10 {
+#     tls internal
+#     reverse_proxy web:3000
+#   }
+# `tls internal` issues a self-signed certificate the browser asks to trust once; with a public
+# domain, remove that line and Caddy obtains a real certificate automatically.
+https://your-host.example {
+  reverse_proxy web:3000
+}

@@ -8,9 +8,24 @@ services:
     environment:
       NODE_ENV: production
       AUTH_DATA_DIR: /app/data
+      # The origins the API answers cross-origin requests from (comma-separated, credentials
+      # included). Uncomment for the desktop app and any separately hosted client — see README.
+      # ALLOWED_ORIGINS: app://bundle
     restart: unless-stopped
     volumes:
       - music_data:/app/data
+  # The HTTPS edge for the API, for when clients reach the server from another machine (the
+  # desktop app pointed at this host, or a hosted client). Uncomment, set your host in Caddyfile,
+  # then reach the API at https://your-host. `tls internal` self-signs for LAN use; give Caddy a
+  # domain it can verify for a public certificate instead.
+  # proxy:
+  #   image: caddy:2-alpine
+  #   restart: unless-stopped
+  #   ports:
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy_data:/data
 volumes:
   music_data:
-
+  # caddy_data:

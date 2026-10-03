@@ -8,6 +8,9 @@ node_modules
 .next
 out
 build
+
+# desktop packaging output
+dist
 *.png
 *.mp3
 *.mp4
@@ -34,3 +37,4 @@ yarn-error.log*
 
 # vercel
 .vercel
+.api-export-stash

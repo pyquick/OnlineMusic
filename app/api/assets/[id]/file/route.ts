@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"; import fs from "node:fs"; import crypto from "node:crypto"; import { getAsset } from "@/lib/assets"; import { session } from "@/lib/accounts";
+import { applyCors } from "@/lib/cors";
 export const dynamic="force-dynamic";
 
 const CACHE_CONTROL="private, max-age=2592000, immutable";
@@ -40,22 +41,22 @@ function fileStream(path:string,range?:{start:number;end:number}){
 
 export async function GET(request:Request,{params}:{params:{id:string}}){
   const token=request.headers.get("cookie")?.match(/(?:^|; )session=([^;]+)/)?.[1],u=session(token),a=u&&getAsset(params.id,u.email);
-  if(!a)return NextResponse.json({error:"not found"},{status:404});
+  if(!a)return applyCors(request,NextResponse.json({error:"not found"},{status:404}));
   try{
     const stat=fs.statSync(a.filePath), type=String(a.metadata.mimeType||"application/octet-stream");
     const etag=`"${await fileHash(a)}"`;
     const cacheHeaders={"ETag":etag,"Cache-Control":CACHE_CONTROL,"Last-Modified":stat.mtime.toUTCString(),"Accept-Ranges":"bytes","Content-Disposition":`inline; filename="${encodeURIComponent(a.name)}"`};
-    if(matchesEtag(request.headers.get("if-none-match"),etag))return new NextResponse(null,{status:304,headers:cacheHeaders});
+    if(matchesEtag(request.headers.get("if-none-match"),etag))return applyCors(request,new NextResponse(null,{status:304,headers:cacheHeaders}));
     const range=request.headers.get("range");
-    if(!range)return new NextResponse(fileStream(a.filePath),{headers:{...cacheHeaders,"Content-Type":type,"Content-Length":String(stat.size)}});
+    if(!range)return applyCors(request,new NextResponse(fileStream(a.filePath),{headers:{...cacheHeaders,"Content-Type":type,"Content-Length":String(stat.size)}}));
     const match=/bytes=(\d*)-(\d*)/.exec(range);
-    if(!match)return new NextResponse(null,{status:416});
+    if(!match)return applyCors(request,new NextResponse(null,{status:416}));
     // Serve exactly what was asked for: an open-ended range runs to the end of the file, so the
     // browser receives one complete response it can cache in full instead of 1 MB fragments.
     const start=!match[1]&&match[2]?Math.max(0,stat.size-Number(match[2])):match[1]?Number(match[1]):0;
     const end=Math.min(!match[1]&&match[2]?stat.size-1:match[2]?Number(match[2]):stat.size-1,stat.size-1);
-    if(!Number.isFinite(start)||!Number.isFinite(end)||start>=stat.size||end<start)return new NextResponse(null,{status:416});
+    if(!Number.isFinite(start)||!Number.isFinite(end)||start>=stat.size||end<start)return applyCors(request,new NextResponse(null,{status:416}));
     const length=end-start+1;
-    return new NextResponse(fileStream(a.filePath,{start,end}),{status:206,headers:{...cacheHeaders,"Content-Range":`bytes ${start}-${end}/${stat.size}`,"Content-Length":String(length),"Content-Type":type}});
-  }catch{return NextResponse.json({error:"file not found"},{status:404})}
+    return applyCors(request,new NextResponse(fileStream(a.filePath,{start,end}),{status:206,headers:{...cacheHeaders,"Content-Range":`bytes ${start}-${end}/${stat.size}`,"Content-Length":String(length),"Content-Type":type}}));
+  }catch{return applyCors(request,NextResponse.json({error:"file not found"},{status:404}))}
 }

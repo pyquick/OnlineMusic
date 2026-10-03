@@ -38,6 +38,34 @@ For production, use Docker:
 ./build.sh             # docker-compose build && docker-compose up -d
 ```
 
+## Desktop app (macOS)
+
+The same interface packages as a `.app`: an Electron shell (`desktop/`) around the static export
+of the UI. The app is a pure client — it bundles no server and no data; accounts and media are
+fetched from the API server named in Settings → Server.
+
+```bash
+npm install
+npm run package:mac    # builds the static export and assembles dist/onlineMusic.app
+```
+
+The shell serves the UI from a privileged `app://bundle` scheme, so its origin is stable and the
+server can allowlist it. For the app to reach the server:
+
+1. Allow the app's origin on the server (uncomment in `docker-compose.yml`):
+   `ALLOWED_ORIGINS: app://bundle`
+2. Point the app at the server in **Settings → Server** (empty means the local
+   `http://localhost:3000`, where cookies work because localhost is a trustworthy origin).
+
+Any other client can be hosted the same way: `npm run build:client` produces the static export
+in `out/`, and the server answers whichever origins `ALLOWED_ORIGINS` lists (comma-separated,
+credentials included). A client on a *different machine* needs the API behind HTTPS — the
+commented `proxy` service in `docker-compose.yml` puts Caddy in front (`tls internal` self-signs
+for LAN use; see `Caddyfile`) — because cross-origin session cookies are `SameSite=None; Secure`,
+and browsers only store Secure cookies over https (localhost excepted).
+
+The UI itself is unchanged between the browser and the desktop app.
+
 ## Where data lives
 
 All state lives under the directory pointed to by `AUTH_DATA_DIR` (default `./data`):

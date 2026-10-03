@@ -19,7 +19,10 @@ const LIMITS = {
   // hand-drawn glyphs for every platform, and Apple's own SF Symbols (inlined at 0.1-unit
   // precision) that a layout effect swaps in on Apple devices only, per Apple's licence. Measured
   // 137.5 kB gz with both sets; the same build without the SF symbols measured 131.7.
-  initialJsGz: 138_000,   // measured 137.5 kB gz after the SF Symbols split
+  // 2026-10-03: raised 138 → 139. The client now resolves every API and media URL through the
+  // configurable server address (infrastructure/api/base plus the page's call sites) so the same
+  // build can talk to a remote server. Measured 138.0 kB gz.
+  initialJsGz: 139_000,   // measured 138.0 kB gz with the server-address resolver
   // Measured 2026-10-01: 13.5 kB gz for the studio's own stylesheet (unchanged from the
   // now-playing baseline) plus ~1.9 kB gz for the lyrics feature's own file, which ships with
   // the now-playing/editor chunks and is only fetched when one of them is. The limit guards the
@@ -31,7 +34,9 @@ const LIMITS = {
   // card above them) and the bar's transport icons joining the adaptive ink are real surfaces;
   // the dead weight around them went first — the dock's inline positioning (always overridden by
   // its hit zone), a duplicated rail rule, its own veil — and the total still measured 18.12.
-  cssGz: 18_200,
+  // 2026-10-03: raised to 18.6. The server-address card's field (its class in the shared field
+  // list plus the feature's own three rules) measured 18.4.
+  cssGz: 18_600,
   largestChunkGz: 58_000, // the shared vendor chunk, measured 53.7 kB gz
 };
 
