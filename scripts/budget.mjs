@@ -15,7 +15,11 @@ import path from "node:path";
 
 const NEXT = path.join(process.cwd(), ".next");
 const LIMITS = {
-  initialJsGz: 135_000,   // measured 122.2 kB gz after P3.3
+  // 2026-10-03: raised 135 → 138. The icon family now ships two sets in the same module — the
+  // hand-drawn glyphs for every platform, and Apple's own SF Symbols (inlined at 0.1-unit
+  // precision) that a layout effect swaps in on Apple devices only, per Apple's licence. Measured
+  // 137.5 kB gz with both sets; the same build without the SF symbols measured 131.7.
+  initialJsGz: 138_000,   // measured 137.5 kB gz after the SF Symbols split
   // Measured 2026-10-01: 13.5 kB gz for the studio's own stylesheet (unchanged from the
   // now-playing baseline) plus ~1.9 kB gz for the lyrics feature's own file, which ships with
   // the now-playing/editor chunks and is only fetched when one of them is. The limit guards the
