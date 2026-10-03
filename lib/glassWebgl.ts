@@ -68,10 +68,11 @@ const NS = "http://www.w3.org/2000/svg";
 /**
  * Whether this engine should bend its rims in WebGL. WebKit must — it *accepts* `url()` in a
  * backdrop-filter list and then paints nothing for it, whatever its parser answered. Chromium has
- * the SVG map already, and only opts in from a development build with `?glasswebgl=1`, which is
- * how the two implementations are compared before the WebGL one is relied on anywhere else.
+ * the SVG map already and takes WebGL only when asked for: the stored "WebGL rendering" switch
+ * (`enable`), or a development build's `?glasswebgl=1`, which is how the two implementations are
+ * compared. Every WebGL2 probe failing falls back to the SVG path.
  */
-export function canUseWebglGlass() {
+export function canUseWebglGlass(enable = false) {
   if (typeof document === "undefined") return false;
   try {
     const canvas = document.createElement("canvas");
@@ -79,6 +80,7 @@ export function canUseWebglGlass() {
   } catch {
     return false;
   }
+  if (enable) return true;
   if (process.env.NODE_ENV !== "production" && /[?&]glasswebgl\b/.test(window.location.search)) return true;
   return /apple/i.test(navigator.vendor ?? "");
 }
@@ -512,8 +514,8 @@ type Surface = {
   frostKey: string;
 };
 
-export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): GlassWebglHandle | null {
-  if (!canUseWebglGlass()) return null;
+export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters, enable = false): GlassWebglHandle | null {
+  if (!canUseWebglGlass(enable)) return null;
   const viewport = document.createElement("canvas");
   viewport.setAttribute("aria-hidden", "true");
   const gl = viewport.getContext("webgl2", { alpha: true, premultipliedAlpha: false, antialias: false, depth: false, stencil: false, powerPreference: "high-performance" });

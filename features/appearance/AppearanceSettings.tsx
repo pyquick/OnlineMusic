@@ -113,7 +113,8 @@ export default function AppearanceSettings({ glass, onGlass, appearance, onAppea
           <RangeControl label="Blur" value={glass.blur} min={0} max={MAX_GLASS_BLUR} step={GLASS_BLUR_STEP} display={`${glass.blur}px`} onChange={(next) => onGlass({ blur: next })} />
           <RangeControl label="Clarity" value={glass.clarity} min={0} max={100} display={`${glass.clarity}%`} onChange={(next) => onGlass({ clarity: next })} />
           <RangeControl label="Corner radius" value={glass.radius} min={50} max={150} display={`${glass.radius}%`} onChange={(next) => onGlass({ radius: next })} />
-          <p className="settings-hint">Blur frosts what sits behind a pane and clarity is how much of it shows through; both apply live and are saved in this browser. Edge distortion and edge refraction now live per family, in the card below.</p>
+          <label className="toggle-row"><input type="checkbox" checked={glass.webgl} onChange={(event) => onGlass({ webgl: event.target.checked })} /><span>WebGL rendering</span></label>
+          <p className="settings-hint">Blur frosts what sits behind a pane and clarity is how much of it shows through; both apply live and are saved in this browser. Edge distortion and edge refraction now live per family, in the card below. WebGL rendering bends the rims in a shader instead of SVG filters — Chromium only; Safari always uses WebGL, because its backdrop-filter cannot bend a backdrop — and switching re-initialises the glass.</p>
         </div>
       </div>
 

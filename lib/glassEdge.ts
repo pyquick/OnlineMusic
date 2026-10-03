@@ -396,7 +396,11 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     const base = (pane.group && groups[pane.group]?.pull) ?? offset;
     const pull = Math.min(base * pane.scale, pane.band * share, pane.pullCap > 0 ? pane.pullCap : Infinity);
     if (pull < 0.5 || pane.band < MIN_BAND) {
-      pane.element.style.removeProperty("--glass-edge-filter");
+      // The property must never be left unset: it inherits, so a rimless pane inside another
+      // pane would pick up the ancestor's filter — a map built for the ancestor's own geometry,
+      // which is the Width-0 sample inversion. The neutral value is the stylesheet's own
+      // fallback, so it composes into the backdrop-filter list where `none` would void it.
+      pane.element.style.setProperty("--glass-edge-filter", "saturate(100%)");
       return;
     }
     // The rainbow: the master dial, scaled by the brightness the sampler measured behind this
@@ -460,7 +464,9 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
 
   function destroyPane(pane: Pane) {
     sizes.unobserve(pane.element);
-    pane.element.style.removeProperty("--glass-edge-filter");
+    // Neutral, not removed: an element losing its marker while still inside a glass ancestor
+    // must not fall back to inheriting that ancestor's map.
+    pane.element.style.setProperty("--glass-edge-filter", "saturate(100%)");
     pane.filter.remove();
   }
 

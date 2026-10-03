@@ -40,6 +40,9 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
   const [ready, setReady] = useState(false);
   const webglRef = useRef<GlassWebglHandle | null>(null);
   const edgeRef = useRef<ReturnType<typeof attachGlassEdge> | null>(null);
+  /** The dials of the latest render, so a re-attach can push them without depending on them. */
+  const latest = useRef(settings);
+  latest.current = settings;
 
   const update = useCallback((patch: Partial<GlassSettings>) => {
     setSettings((current) => ({ ...current, ...patch }));
@@ -63,24 +66,31 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
 
   const { blur, clarity, edge, refraction, radius, dispersion, groups } = settings;
 
-  // The rims attach once: SVG in Chromium, WebGL where CSS cannot bend a backdrop (Safari; and
-  // Chromium from a development build with ?glasswebgl=1). A WebGL build that cannot start falls
-  // through to the SVG path, and thence to the stylesheet's shaded rim, so a pane is never left
-  // without something at its edges. Mount only — re-attaching would throw the raster away; the
-  // dials are pushed in below, with the restored values of the next commit.
+  // The rims attach once per engine choice: SVG in Chromium, WebGL where CSS cannot bend a
+  // backdrop (Safari, always; Chromium when the stored "WebGL rendering" switch asks for it). A
+  // WebGL build that cannot start falls through to the SVG path, and thence to the stylesheet's
+  // shaded rim, so a pane is never left without something at its edges. The effect re-runs only
+  // when the switch flips — so the dials of the moment are pushed explicitly on attach, where
+  // the push effects below would not re-fire for values that did not change.
   useEffect(() => {
     const element = shell.current;
     if (!element) return;
-    const webgl = attachGlassWebgl(element, { blur, clarity: clarity / 100, offset: edge, band: refraction, radius: radius / 100, dispersion: dispersion / 100 });
+    const current = latest.current;
+    const webgl = attachGlassWebgl(element, { blur: current.blur, clarity: current.clarity / 100, offset: current.edge, band: current.refraction, radius: current.radius / 100, dispersion: current.dispersion / 100 }, current.webgl);
     if (webgl) {
+      webgl.setGroups(current.groups);
       webglRef.current = webgl;
       return () => { webgl.destroy(); webglRef.current = null; };
     }
     const glass = attachGlassEdge(element);
+    glass.setOffset(current.edge);
+    glass.setRefraction(current.refraction);
+    glass.setDispersion(current.dispersion / 100);
+    glass.setGroups(current.groups);
     edgeRef.current = glass;
     return () => { glass.destroy(); edgeRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [settings.webgl]);
 
   // The ink sampler reads the shell's own luma and writes every pane's ink, shade and glow. The
   // root is handed in, so the engine never has to know the shell's class name.

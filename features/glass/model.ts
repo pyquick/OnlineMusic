@@ -54,6 +54,12 @@ export type GlassSettings = {
   dispersion: number;
   /** Per-family overrides; a family absent here follows the studio's own values. */
   groups: GlassGroupValues;
+  /**
+   * Bend the rims in WebGL on an engine that could also bend them with SVG maps (Chromium).
+   * Off by default — the SVG path is the verified one there. Safari ignores the switch and
+   * always renders in WebGL, because its backdrop-filter cannot paint a filter reference at all.
+   */
+  webgl: boolean;
 };
 
 export const DEFAULT_GLASS_SETTINGS: GlassSettings = {
@@ -64,6 +70,7 @@ export const DEFAULT_GLASS_SETTINGS: GlassSettings = {
   refraction: DEFAULT_GLASS_REFRACTION,
   dispersion: DEFAULT_GLASS_DISPERSION,
   groups: {},
+  webgl: false,
 };
 
 /** The known families, so a stored blob cannot invent one; each value is clamped like the sliders. */
@@ -110,6 +117,8 @@ export function readGlassSettings(data: unknown): GlassSettings {
     refraction: Math.round(Math.max(0, Math.min(MAX_BAND_PX, bandPx))),
     dispersion: Math.round(Math.max(0, Math.min(100, number(record.glassDispersion, DEFAULT_GLASS_SETTINGS.dispersion)))),
     groups: readStoredGroups(record.glassGroups),
+    // Strict on purpose: a stray truthy value in a hand-edited blob must not switch engines.
+    webgl: record.glassWebgl === true,
   };
 }
 
@@ -127,6 +136,8 @@ export function glassStoredFields(settings: GlassSettings) {
     glassBandPx: settings.refraction,
     glassDispersion: settings.dispersion,
     glassGroups: settings.groups,
+    // Appended after the historical names: older blobs simply omit it and read back as SVG.
+    glassWebgl: settings.webgl,
   };
 }
 

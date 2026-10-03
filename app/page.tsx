@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, ChangeEvent, DragEvent, PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, ChangeEvent, DragEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowLeft,
@@ -47,7 +47,7 @@ import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyph
 import type { Asset, IndexEntry } from "@/shared/types/media";
 import { DEFAULT_APPEARANCE, GRADIENT_PRESETS, SOLID_PRESETS, tintChannels, type Appearance } from "@/features/appearance";
 import { useGlassSystem } from "@/features/glass/useGlassSystem";
-import { SETTINGS_STORAGE_KEY } from "@/shared/utilities/settings";
+import { SESSION_STORAGE_KEY, readStoredSession, SETTINGS_STORAGE_KEY, type StoredSession } from "@/shared/utilities/settings";
 import { RangeControl } from "@/design-system/components/RangeControl";
 import { coverSrc } from "@/shared/utilities/media";
 import { emptyLyricsDoc, parseLyrics, type LyricsDoc } from "@/shared/lyrics";
@@ -451,9 +451,74 @@ export default function Home() {
     return () => window.removeEventListener("scroll", remember);
   }, []);
   const restored = useRef(false);
+  /** The view the mount restore switched to: its first scroll effect must leave the browser's
+      own reload restoration alone rather than scrolling to the remembered offset. */
+  const ignoreScrollFor = useRef<View | null>(null);
   useLayoutEffect(() => {
     if (!restored.current) { restored.current = true; return; }
+    if (ignoreScrollFor.current === view) { ignoreScrollFor.current = null; return; }
     window.scrollTo({ top: scrollByView.current[view] ?? 0 });
+  }, [view]);
+
+  /* ── The session ───────────────────────────────────────────────────────────
+     What a refresh keeps: the screen, the track and its position, the transport's order and
+     whether the fullscreen now-playing view was up. It is written on every change it names and
+     on the media clock's own slower timer; the track is restored only once the index stream
+     delivers its row, and never through playAsset — whose same-name branch would reset the very
+     position being restored. */
+  const sessionReady = useRef(false);
+  /** The view the mount restore asked for, and the view of the first render. Writers stand down
+      while the two disagree: hydration can run the saving effects before the restore's state
+      update has rendered, and a stale view written then would clobber the session being restored
+      (which is exactly what a refresh — and StrictMode's second effect run — would then read). */
+  const restoreView = useRef<View | null>(null);
+  const mountView = useRef(view);
+  const pendingResume = useRef<{ name: string; time: number; playing: boolean } | null>(null);
+  const pendingSeek = useRef<{ name: string; time: number; playing: boolean } | null>(null);
+  /** True once the index stream has run to its end, so a missing track stops blocking the save. */
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
+  /** The latest session fields, for the writers that fire outside React's render. */
+  const sessionState = useRef({ view, asset, playOrder, nowOpen, playing });
+  sessionState.current = { view, asset, playOrder, nowOpen, playing };
+  const lastSessionWrite = useRef(0);
+
+  const saveSession = useCallback(() => {
+    if (!sessionReady.current) return;
+    const latest = sessionState.current;
+    if (restoreView.current && latest.view !== restoreView.current) return;
+    const audio = audioRef.current;
+    const song = latest.asset?.kind === "audio" ? latest.asset : null;
+    const time = song && audio && Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    try {
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+        view: latest.view,
+        track: song?.file.name ?? null,
+        time,
+        playing: latest.playing,
+        playOrder: latest.playOrder,
+        nowOpen: latest.nowOpen,
+      }));
+    } catch { /* a full storage must not stop playback */ }
+  }, []);
+
+  // Before first paint, so the restored screen renders in the first frame. The transport is not
+  // started here: the track resolves only when the index stream reaches its row.
+  useLayoutEffect(() => {
+    let session: StoredSession | null = null;
+    try { session = readStoredSession(JSON.parse(window.localStorage.getItem(SESSION_STORAGE_KEY) ?? "null")); } catch { session = null; }
+    sessionReady.current = true;
+    if (!session) return;
+    setPlayOrder(session.playOrder);
+    if (session.nowOpen) setNowOpen(true);
+    if (session.track) pendingResume.current = { name: session.track, time: session.time, playing: session.playing };
+    if (session.view !== shownView.current) { ignoreScrollFor.current = session.view; restoreView.current = session.view; }
+    setView(session.view);
+  }, []);
+
+  // Once a render shows any view but the mount's, the restore has landed — or the listener moved
+  // on first — and the writers are free again.
+  useEffect(() => {
+    if (view !== mountView.current) restoreView.current = null;
   }, [view]);
 
   // Starting a track gets a slow swell on the play glyph; pausing just swaps the icon.
@@ -474,7 +539,7 @@ export default function Home() {
   async function loadRemoteAssets() {
     if (!authReady) return;
     assetStreamRef.current?.abort();
-    if (!user) { setAssets([]); return; }
+    if (!user) { setAssets([]); pendingResume.current = null; return; }
     const controller = new AbortController();
     assetStreamRef.current = controller;
     const merge = (entries: IndexEntry[]) => {
@@ -511,9 +576,31 @@ export default function Home() {
       }
       if (buffer.trim()) { try { merge([JSON.parse(buffer) as IndexEntry]); } catch { /* trailing partial line */ } }
     } catch { /* an aborted or interrupted stream keeps whatever rows already rendered */ }
+    finally {
+      // Only the stream that still owns the ref has finished; an aborted one hands over to its
+      // successor, whose own end will flip this.
+      if (assetStreamRef.current === controller) setAssetsLoaded(true);
+    }
   }
 
   useEffect(() => { void loadRemoteAssets(); }, [user?.email, authReady]);
+
+  // The saved track, resolved against the index stream as soon as its row arrives. A listener who
+  // picked something first wins; a stream that ends without the track drops the restore instead
+  // of blocking the session writers for good.
+  useEffect(() => {
+    const pending = pendingResume.current;
+    if (!pending) return;
+    if (sessionState.current.asset) { pendingResume.current = null; return; }
+    const found = assets.find((item) => item.kind === "audio" && item.file.name === pending.name);
+    if (found) {
+      pendingResume.current = null;
+      pendingSeek.current = pending;
+      setAsset(found);
+      return;
+    }
+    if (assetsLoaded) pendingResume.current = null;
+  }, [assets, assetsLoaded]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -528,6 +615,26 @@ export default function Home() {
       audio.load();
     }
   }, [asset?.url, asset?.kind]);
+
+  // The restored position: the src effect above has just reset currentTime, so the seek waits for
+  // the track's own metadata, and the play effect below then starts it. A browser that refuses to
+  // autoplay leaves the element loaded and paused exactly here — the agreed fallback.
+  useEffect(() => {
+    const audio = audioRef.current;
+    const pending = pendingSeek.current;
+    if (!audio || !pending || asset?.file.name !== pending.name) return;
+    const apply = () => {
+      if (pendingSeek.current !== pending) return;
+      pendingSeek.current = null;
+      const duration = audio.duration;
+      const time = Number.isFinite(duration) && duration > 0 ? Math.min(pending.time, Math.max(0, duration - 0.1)) : pending.time;
+      try { audio.currentTime = time; } catch { /* the source is gone again */ }
+      if (pending.playing) setPlaying(true);
+    };
+    if (audio.readyState >= 1) { apply(); return; }
+    audio.addEventListener("loadedmetadata", apply, { once: true });
+    return () => audio.removeEventListener("loadedmetadata", apply);
+  }, [asset?.file.name, asset?.url]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -562,6 +669,45 @@ export default function Home() {
       audio.pause();
     }
   }, [playing, asset]);
+
+  // Every change the session names is saved at once; the media clock writes on its own slower
+  // timer. Skipped while a restore is pending — the track has not resolved yet, and writing now
+  // would store a null track over the session being restored.
+  useEffect(() => {
+    if (pendingResume.current || !sessionReady.current) return;
+    saveSession();
+  }, [view, playOrder, nowOpen, playing, asset?.file.name, saveSession]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onTime = () => {
+      const now = Date.now();
+      if (now - lastSessionWrite.current < 3000) return;
+      lastSessionWrite.current = now;
+      saveSession();
+    };
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("pause", saveSession);
+    audio.addEventListener("ended", saveSession);
+    return () => {
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("pause", saveSession);
+      audio.removeEventListener("ended", saveSession);
+    };
+  }, [saveSession]);
+
+  // A tab being hidden or closed cannot wait for the next media event.
+  useEffect(() => {
+    const onHide = () => saveSession();
+    const onVisibility = () => { if (document.visibilityState === "hidden") onHide(); };
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [saveSession]);
 
   // On entering a collection view, warm the head of the first few songs so the top of the list plays instantly.
   // Videos are left to the hover hint: their read-ahead is large, so they are not pulled on sight.
@@ -636,6 +782,9 @@ export default function Home() {
   }, [videoOverlay, modalOpen, authOpen, parametersOpen, lyricsEditorOpen, asset]);
 
   async function playAsset(nextAsset: Asset, order?: string[]) {
+    // A listener's choice outranks the restore still in flight.
+    pendingResume.current = null;
+    pendingSeek.current = null;
     // Shuffle and list repeat walk songs only: a clip in the listing is dropped here, at the one
     // point every listing feeds through, so no caller can leave a video in the order to be stepped to.
     const songs = new Set(assets.filter((item) => item.kind === "audio").map((item) => item.file.name));
@@ -934,10 +1083,13 @@ export default function Home() {
     return null;
   }
 
-  /** Applies a change to one import across both the list and the selected asset. */
-  function patchImportedAsset(file: File, patch: (item: Asset) => Asset) {
-    setAssets((current) => current.map((item) => (item.file === file ? patch(item) : item)));
-    setAsset((current) => (current && current.file === file ? patch(current) : current));
+  /** Applies a change to one asset across both the list and the selected asset. The match is by
+      file name — the studio's identity everywhere — because a persisted import is re-streamed
+      from the index as a fresh Asset whose File object is a new one, so the handle alone would
+      miss it and the cards would keep the old text until a reload. */
+  function patchAsset(file: File, patch: (item: Asset) => Asset) {
+    setAssets((current) => current.map((item) => (item.file.name === file.name ? patch(item) : item)));
+    setAsset((current) => (current && current.file.name === file.name ? patch(current) : current));
   }
 
   async function receiveFiles(files: File[]) {
@@ -980,7 +1132,7 @@ export default function Home() {
           ...(tags.lyrics ? { lyrics: tags.lyrics } : {}),
         },
       };
-      patchImportedAsset(item.file, () => next);
+      patchAsset(item.file, () => next);
       return next;
     }));
     void persistImportedAssets(enriched);
@@ -1007,13 +1159,20 @@ export default function Home() {
   function onCoverInput(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]; event.target.value = "";
     if (!file || !file.type.startsWith("image/")) return;
+    const target = asset;
+    if (!target) return;
     const reader = new FileReader();
-    reader.onload = () => { setAsset((current) => current ? { ...current, metadata: { ...current.metadata, coverData: String(reader.result) } } : current); setSaved(false); };
+    // Through patchAsset, not setAsset alone: the cards render from `assets`, so a new cover
+    // must land on the strip and the project card the moment it is read.
+    reader.onload = () => { patchAsset(target.file, (item) => ({ ...item, metadata: { ...item.metadata, coverData: String(reader.result) } })); setSaved(false); };
     reader.readAsDataURL(file);
   }
 
   function updateMetadata(field: "title" | "artist" | "album" | "genre", value: string) {
-    setAsset((current) => (current ? { ...current, [field]: value } : current));
+    // The list as well as the selection: a title typed here shows on the cards as it is typed.
+    const current = asset;
+    if (!current) return;
+    patchAsset(current.file, (item) => ({ ...item, [field]: value }));
     setSaved(false);
   }
 

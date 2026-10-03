@@ -129,7 +129,7 @@
 .mini-cover-button{flex:none;display:block;padding:0;border-radius:11px;background:none;cursor:pointer}
 .mini-cover-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .mini-cover-expand{position:absolute;inset:0;display:grid;place-items:center;border-radius:inherit;background:rgba(20,22,34,.5);color:#fff;opacity:0;transition:opacity .2s ease}
-.mini-cover-button:focus-visible .mini-cover-expand{opacity:1}
+.mini-cover-button:hover .mini-cover-expand,.mini-cover-button:focus-visible .mini-cover-expand{opacity:1}
 
 /* The play/pause is a solid glyph, not a filled disc: no chrome of its own, and
    nothing changes under the pointer. It is scoped to the bar so the video dock's
