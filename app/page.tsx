@@ -535,6 +535,23 @@ export default function Home() {
   // The ambient drift is stepped, not animated: see lib/ambientDrift.ts for what the frames cost.
   useEffect(() => startAmbientDrift(), []);
 
+  // Which input is driving focus: the shell carries `data-pointer` from a pointerdown until the
+  // next keydown, and the stylesheet keeps every ring off while it does. CSS alone cannot tell —
+  // a Mac with keyboard navigation on makes the browser call every focus :focus-visible — so a
+  // click would otherwise leave the browser's blue box on the control it landed on.
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    const fromPointer = () => shell.setAttribute("data-pointer", "");
+    const fromKeys = () => shell.removeAttribute("data-pointer");
+    document.addEventListener("pointerdown", fromPointer, true);
+    document.addEventListener("keydown", fromKeys, true);
+    return () => {
+      document.removeEventListener("pointerdown", fromPointer, true);
+      document.removeEventListener("keydown", fromKeys, true);
+    };
+  }, []);
+
   /** Reads the newline-delimited index and appends each list entry as soon as its line arrives. */
   async function loadRemoteAssets() {
     if (!authReady) return;

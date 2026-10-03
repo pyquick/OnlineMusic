@@ -71,7 +71,15 @@
 .now-switch button:hover{color:#fff}
 .now-switch button.is-on{background:#fff;color:#12141d}
 .now-queue ol,.now-lyrics{flex:1;min-height:0;margin:14px 0 0;padding:0 8px 0 0;overflow-y:auto}
-.now-queue ol{list-style:none;display:flex;flex-direction:column;gap:3px}
+/* The songs are their own scroll world: a swipe that reaches an end must not drag the page behind
+   it, and the list's own scrollbar would be a bright stripe laid on the dark glass — the two edges
+   fade instead, so a cut-off row reads as "more below" rather than as a clipped one (the lyrics
+   window's own device). Programmatic scrolls (bringing the playing song to the middle) ride the
+   house curve; a finger's scroll is the browser's as always. */
+.now-queue ol{list-style:none;display:flex;flex-direction:column;gap:3px;overscroll-behavior:contain;scrollbar-width:none;scroll-behavior:smooth;
+  -webkit-mask-image:linear-gradient(to bottom,#0000 0,#000 14px,#000 calc(100% - 14px),#0000 100%);
+  mask-image:linear-gradient(to bottom,#0000 0,#000 14px,#000 calc(100% - 14px),#0000 100%)}
+.now-queue ol::-webkit-scrollbar{display:none}
 /* The words are a window now, not a page: the renderer inside scrolls the live line to the
    middle of this box, and the sheet keeps only its shape and its edge fade. */
 .now-lyrics{padding-right:10px;overflow:hidden;

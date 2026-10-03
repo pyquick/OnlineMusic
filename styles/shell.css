@@ -21,10 +21,6 @@
    item is the exception: its words wear the accent through the full ramp (the shared stylesheet),
    while the glyph is left at this default. */
 .pill-item{position:relative;z-index:1;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 2px;border-radius:999px;background:none;color:color-mix(in srgb,#fff clamp(0%,(var(--ink-mix,0%) - 50%) * 200,100%),#000);font-size:var(--text-lg);transition:color .2s}
-/* The keyboard's ring, in the studio's own accent rather than the browser's default blue — the
-   same ring the bar's cover and the waveform wear. A pointer never leaves one behind: the pill
-   clears the focus a press hands its tile. */
-.pill-item:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .bottom-pill .pill-item:hover{background:none;box-shadow:none;transform:none;scale:1}
 .pill-icon{display:grid;place-items:center;height:20px}
 /* No line-height of its own: the normal line box, like the rail's items. A 1em line box is
@@ -127,7 +123,6 @@
    same window onto its queue rather than sitting inert. */
 .mini-cover img{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
 .mini-cover-button{flex:none;display:block;padding:0;border-radius:11px;background:none;cursor:pointer}
-.mini-cover-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .mini-cover-expand{position:absolute;inset:0;display:grid;place-items:center;border-radius:inherit;background:rgba(20,22,34,.5);color:#fff;opacity:0;transition:opacity .2s ease}
 .mini-cover-button:hover .mini-cover-expand,.mini-cover-button:focus-visible .mini-cover-expand{opacity:1}
 

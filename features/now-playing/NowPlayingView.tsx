@@ -102,6 +102,22 @@ export default function NowPlayingView({
     return () => window.clearTimeout(timer);
   }, [compact, drawer]);
 
+  /**
+   * When the songs come up, the eye is looking for the one playing: the list glides to it — the
+   * row centred, the motion on the stylesheet's smooth curve — instead of leaving it wherever the
+   * last visit scrolled to. It runs only when the panel opens or the track changes, so a hand
+   * scrolling the list is never fought, and it moves the list's own scrollTop (a scrollIntoView
+   * would drag every scrollable ancestor along, the page included).
+   */
+  const queueListRef = useRef<HTMLOListElement | null>(null);
+  useEffect(() => {
+    const list = queueListRef.current;
+    if (panel !== "queue" || !drawer || !list) return;
+    const current = list.querySelector<HTMLElement>(".now-row.is-current");
+    if (!current) return;
+    list.scrollTo({ top: current.offsetTop - (list.clientHeight - current.offsetHeight) / 2, behavior: "smooth" });
+  }, [panel, drawer, track?.file.name]);
+
   // Escape unwinds one layer at a time: the sheet first, the view itself after. On the small
   // screen the up and down arrows do what the pull does — that layout has no corner switch, so the
   // keyboard is a way in there; on the wide one the switch is right there and the arrows are left
@@ -277,7 +293,7 @@ export default function NowPlayingView({
                 so the hidden sheet is not rendered at all: one surface, one synchroniser. */}
             {panel === "lyrics"
               ? (compact ? null : <div className="now-lyrics"><PlaybackLyrics doc={lyrics} media={media} /></div>)
-              : <ol>
+              : <ol ref={queueListRef}>
                 {queue.map((item) => <li key={item.file.name}><button className={`now-row ${item.file.name === track?.file.name ? "is-current" : ""}`} onClick={() => onPick(item)}><span className="now-row-art">{coverSrc(item) ? <img src={coverSrc(item)} alt="" loading="lazy" decoding="async" /> : <Music2 size={14} />}</span><span className="now-row-copy"><strong>{item.title || item.file.name}</strong><small>{[item.artist, item.album].filter(Boolean).join(" — ") || "Unknown artist"}</small></span></button></li>)}
                 {queue.length === 0 && <li className="now-empty">Nothing else in this project yet.</li>}
               </ol>}

@@ -344,7 +344,12 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
       // (That first-column form read red for every channel, and a rim recombined from three
       // copies of the red channel is a rim that has lost its colour — the glass went grey.)
       const row = (channel: number) => (channel === keep ? [0, 1, 2].map((c) => (c === channel ? "1" : "0")).join(" ") + " 0 0" : "0 0 0 0 0");
-      matrix.setAttribute("values", `${[0, 1, 2].map(row).join(" ")} 0 0 0 1 0`);
+      // The alpha row *forces opaque* (`0 0 0 0 1`), not preserves: a screen blend adds alphas
+      // (α+α−α²), and on a translucent backdrop — every pane nested in another pane, the bar's
+      // tiles, the pill's bubble — that thickened the milky veil over the band and the glass
+      // went grey. The band's own alpha comes back in one `in` composite at the end, so the
+      // split changes colour and nothing else.
+      matrix.setAttribute("values", `${[0, 1, 2].map(row).join(" ")} 0 0 0 0 1`);
       matrix.setAttribute("result", `${name}Src`);
       const displace = document.createElementNS(NS, "feDisplacementMap");
       displace.setAttribute("in", `${name}Src`);
@@ -366,13 +371,21 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
       if (result) node.setAttribute("result", result);
       return node;
     };
+    // The colours are recombined on the opaque channel images, and the composite hands the
+    // backdrop's own alpha back (`in` keeps the colour and takes in2's alpha), so the band is as
+    // transparent as the backdrop it refracts.
+    const restore = document.createElementNS(NS, "feComposite");
+    restore.setAttribute("in", "rgbsplit");
+    restore.setAttribute("in2", "SourceGraphic");
+    restore.setAttribute("operator", "in");
     pane.filter.replaceChildren(
       pane.image,
       red.matrix, red.displace,
       green.matrix, green.displace,
       blue.matrix, blue.displace,
       blend("redDisp", "greenDisp", "rgDisp"),
-      blend("rgDisp", "blueDisp", ""),
+      blend("rgDisp", "blueDisp", "rgbsplit"),
+      restore,
     );
     pane.split = { red: red.displace, green: green.displace, blue: blue.displace };
   }
