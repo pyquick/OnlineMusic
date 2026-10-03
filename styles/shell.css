@@ -128,7 +128,6 @@
 /* The play/pause is a solid glyph, not a filled disc: no chrome of its own, and
    nothing changes under the pointer. It is scoped to the bar so the video dock's
    own purple button keeps its look. */
-.glass-bar .player-button{width:auto;height:auto;padding:4px}
 .glass-bar .player-button:disabled{opacity:.3}
 /* Step and mode buttons: plain icons beside the glyph. Shuffle and repeat are
    only offered when the list holds more than one audio file, and they light up

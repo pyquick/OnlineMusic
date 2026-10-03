@@ -155,9 +155,9 @@ export default function VideoOverlay({
             <div className={`now-playing-copy ${nameOpen ? "is-open" : ""}`} data-glass-edge={compact ? "" : undefined} data-glass-scene={compact ? "moving-media" : undefined}><strong><span>{item.title || item.file.name}</span></strong><small>video · local preview</small></div>
           </div>
           <div className="player-controls">
-            <button className="icon-button" onClick={() => seekBy(-10)} aria-label="Back 10 seconds"><SkipBack size={16} /></button>
-            <button className="player-button" onClick={() => { const video = media.current; if (!video) return; if (video.paused) void video.play(); else video.pause(); }} aria-label={playing ? "Pause" : "Play"}>{playing ? <PauseGlyph size={24} /> : <PlayGlyph size={24} />}</button>
-            <button className="icon-button" onClick={() => seekBy(10)} aria-label="Forward 10 seconds"><SkipForward size={16} /></button>
+            <button className="icon-button" onClick={() => seekBy(-10)} aria-label="Back 10 seconds"><SkipBack size={24} /></button>
+            <button className="player-button" onClick={() => { const video = media.current; if (!video) return; if (video.paused) void video.play(); else video.pause(); }} aria-label={playing ? "Pause" : "Play"}>{playing ? <PauseGlyph size={36} /> : <PlayGlyph size={36} />}</button>
+            <button className="icon-button" onClick={() => seekBy(10)} aria-label="Forward 10 seconds"><SkipForward size={24} /></button>
             <div className="progress-wrap">
               <span>{formatTime(progress)}</span>
               <input type="range" min="0" max={duration || 1} step="0.1" value={progress}

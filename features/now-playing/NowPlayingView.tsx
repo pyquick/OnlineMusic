@@ -44,7 +44,12 @@ export type NowPlayingViewProps = {
   /** True for the length of the fall animation, so the view can leave before it unmounts. */
   closing: boolean;
   compact: boolean;
+  /** Which right-hand panel is showing, and whether its column is out — owned by the page so the
+      session can carry it across a close, a reopen and a reload. */
+  panel: "queue" | "lyrics";
+  drawer: boolean;
   media: RefObject<HTMLMediaElement | null>;
+  onDisclosure: (panel: "queue" | "lyrics", open: boolean) => void;
   onClosed: () => void;
   onClose: () => void;
   onTogglePlayback: () => void;
@@ -58,18 +63,20 @@ export type NowPlayingViewProps = {
 
 export default function NowPlayingView({
   track, cover, lyrics, queue, queueNames, playing, playStarting, gain, canStep, shuffleOn, loopOn,
-  tint, closing, compact, media, onClosed, onClose, onTogglePlayback, onToggleMute, onGain, onStep,
-  onToggleShuffle, onToggleLoop, onPick,
+  tint, closing, compact, media, panel, drawer, onDisclosure, onClosed, onClose, onTogglePlayback,
+  onToggleMute, onGain, onStep, onToggleShuffle, onToggleLoop, onPick,
 }: NowPlayingViewProps) {
-  const [panel, setPanel] = useState<"queue" | "lyrics">("queue");
   /**
    * The right column is the corner switch's disclosure, and the switch is its *only* hand: pressing
    * a side opens it, pressing the side already showing puts it away — the closed column gives its
    * width back to the stage, which is what puts the transport back in the middle of the window. The
    * lit disc belongs to the open state and goes with it. A click anywhere else — the empty glass,
    * the artwork, the transport — changes nothing, so the panel stays exactly where it was put.
+   *
+   * The state itself lives above this view (the page owns it), because the session remembers it:
+   * closing the fullscreen player and opening it again — or coming back to the site later — finds
+   * the same side showing, exactly as it was left.
    */
-  const [drawer, setDrawer] = useState(false);
   /** Live progress of the small screen's lyrics gesture, 0 at rest and 1 fully open. */
   const [reveal, setReveal] = useState(0);
   const [axis, setAxis] = useState<"x" | "y" | null>(null);
@@ -124,15 +131,15 @@ export default function NowPlayingView({
   // to the page.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (compact && event.key === "ArrowUp") { event.preventDefault(); setPanel("queue"); setDrawer(true); return; }
-      if (compact && event.key === "ArrowDown" && drawer) { event.preventDefault(); setDrawer(false); return; }
+      if (compact && event.key === "ArrowUp") { event.preventDefault(); onDisclosure("queue", true); return; }
+      if (compact && event.key === "ArrowDown" && drawer) { event.preventDefault(); onDisclosure(panel, false); return; }
       if (event.key !== "Escape") return;
-      if (drawer && compact) { setDrawer(false); setReveal(0); return; }
+      if (drawer && compact) { onDisclosure(panel, false); setReveal(0); return; }
       onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [drawer, compact, onClose]);
+  }, [drawer, panel, compact, onClose, onDisclosure]);
 
   /**
    * The words are the lyrics renderer's business now: it centres the live line, fills its tokens
@@ -184,13 +191,16 @@ export default function NowPlayingView({
    * a scroll intent and a sideways swipe never fight, and the pointer is only captured once an axis
    * is committed — capturing on the way down would swallow the progress slider's own drag.
    */
-  const gesture = useRef<{ pointer: number; x: number; y: number; axis: "x" | "y" | null; onArt: boolean; from: number; time: number } | null>(null);
+  const gesture = useRef<{ pointer: number; x: number; y: number; axis: "x" | "y" | null; onArt: boolean; onWords: boolean; from: number; scroll: number; time: number } | null>(null);
+  /** The words' own window, which the stage's vertical drag scrolls when the finger is on it. */
+  const wordsRef = useRef<HTMLDivElement>(null);
 
   function onGestureStart(event: ReactPointerEvent<HTMLElement>) {
     if (!compact) return;
     const target = event.target as HTMLElement;
     if (target.closest("input,button,.now-progress,.now-transport,.now-drawer")) return;
-    gesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, axis: null, onArt: Boolean(target.closest(".now-art-wrap")), from: drawer ? 1 : reveal, time: performance.now() };
+    const words = target.closest(".now-words") ? wordsRef.current?.querySelector<HTMLElement>(".lyr") ?? null : null;
+    gesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, axis: null, onArt: Boolean(target.closest(".now-art-wrap")), onWords: Boolean(words), from: drawer ? 1 : reveal, scroll: words?.scrollTop ?? 0, time: performance.now() };
   }
 
   function onGestureMove(event: ReactPointerEvent<HTMLElement>) {
@@ -202,7 +212,16 @@ export default function NowPlayingView({
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
       state.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
       setAxis(state.axis);
+      // A drag that has committed to the words is a read, not a pull: the sync hook's own
+      // suspension keeps the auto-centring off the hand for a moment, exactly as a wheel would.
+      if (state.onWords && state.axis === "y") wordsRef.current?.querySelector(".lyr")?.dispatchEvent(new Event("touchstart"));
       try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
+    }
+    // Vertical over the words: the finger scrolls the window it is on, and the sheet stays put.
+    if (state.onWords && state.axis === "y") {
+      const words = wordsRef.current?.querySelector<HTMLElement>(".lyr");
+      if (words) words.scrollTop = state.scroll - dy;
+      return;
     }
     // Only the direction that moves the sheet towards where it already is counts: up (and, on the
     // artwork, to the left) brings it out, down puts it back, and a drag the other way is simply
@@ -219,9 +238,8 @@ export default function NowPlayingView({
    * toggle and the view needs no other way of opening or closing the column.
    */
   function togglePanel(next: "queue" | "lyrics") {
-    if (drawer && panel === next) { setDrawer(false); return; }
-    setPanel(next);
-    setDrawer(true);
+    if (drawer && panel === next) { onDisclosure(panel, false); return; }
+    onDisclosure(next, true);
   }
 
   function onGestureEnd(event: ReactPointerEvent<HTMLElement>) {
@@ -231,9 +249,11 @@ export default function NowPlayingView({
     setAxis(null);
     // A tap while the sheet is up puts it away again, wherever it landed.
     if (!state.axis) {
-      if (drawer) setDrawer(false);
+      if (drawer) onDisclosure(panel, false);
       return;
     }
+    // A read of the words never decides anything about the sheet.
+    if (state.onWords && state.axis === "y") return;
     const dx = event.clientX - state.x;
     const dy = event.clientY - state.y;
     // Up is the positive direction here, so the speed reads the same way the sheet moves.
@@ -254,8 +274,8 @@ export default function NowPlayingView({
     setReveal(open ? 1 : 0);
     // What the pull brings out is the songs that come next; the artwork's own leftward drag is
     // what asks for the words, since it is the artwork the words take the place of.
-    if (open) { setPanel(state.axis === "y" ? "queue" : "lyrics"); setDrawer(true); }
-    else setDrawer(false);
+    if (open) onDisclosure(state.axis === "y" ? "queue" : "lyrics", true);
+    else onDisclosure(panel, false);
   }
 
   return (
@@ -282,7 +302,7 @@ export default function NowPlayingView({
             <div className={`now-art ${track && cover ? "" : "is-empty"} ${playing && track ? "" : "is-resting"}`}>{track && cover ? <img src={cover} alt="" /> : <Music2 size={72} />}</div>
             {/* The words take the artwork's place — the phone's original reading of them, kept for
                 the words alone: what rises from the bottom now is the songs that come next. */}
-            {compact && panel === "lyrics" && <div className="now-words"><PlaybackLyrics doc={lyrics} media={media} variant="words" /></div>}
+            {compact && panel === "lyrics" && <div className="now-words" ref={wordsRef}><PlaybackLyrics doc={lyrics} media={media} variant="words" /></div>}
           </div>
           <div className="now-titles" ref={titlesRef}>
             <h2>{track ? track.title || track.file.name : "Not Playing"}</h2>
@@ -320,7 +340,7 @@ export default function NowPlayingView({
       {/* The bottom edge of the small screen says what the gesture is — pull up for what comes
           next — and answers a tap as well. The wide layout has the corner switch, so it has none
           of this: an arrow on the full screen was in the way. */}
-      {compact && <button className="now-sheet-hint" onClick={() => { setPanel("queue"); setDrawer(true); }}
+      {compact && <button className="now-sheet-hint" onClick={() => onDisclosure("queue", true)}
         aria-label="Continue playing" title="Continue playing" aria-expanded={drawer && panel === "queue"}>
         <ChevronUp size={18} />
       </button>}

@@ -371,6 +371,11 @@ export default function Home() {
   const [shuffleOn, setShuffleOn] = useState(false);
   const [loopOn, setLoopOn] = useState(false);
   const [nowOpen, setNowOpen] = useState(false);
+  /** The fullscreen view's right-hand column, remembered with the session (see saveSession). */
+  const [nowPanel, setNowPanel] = useState<"queue" | "lyrics">("queue");
+  const [nowDrawer, setNowDrawer] = useState(false);
+  /** Stable, so the view's key and gesture effects do not re-subscribe on every render. */
+  const setNowDisclosure = useCallback((panel: "queue" | "lyrics", open: boolean) => { setNowPanel(panel); setNowDrawer(open); }, []);
   /** True for the length of the fall animation, so the view can leave before it unmounts. */
   const [nowClosing, setNowClosing] = useState(false);
   /** Held for the length of the play button's swell, so starting a track reads as an event. */
@@ -478,8 +483,8 @@ export default function Home() {
   /** True once the index stream has run to its end, so a missing track stops blocking the save. */
   const [assetsLoaded, setAssetsLoaded] = useState(false);
   /** The latest session fields, for the writers that fire outside React's render. */
-  const sessionState = useRef({ view, asset, playOrder, nowOpen, playing });
-  sessionState.current = { view, asset, playOrder, nowOpen, playing };
+  const sessionState = useRef({ view, asset, playOrder, nowOpen, playing, nowPanel, nowDrawer });
+  sessionState.current = { view, asset, playOrder, nowOpen, playing, nowPanel, nowDrawer };
   const lastSessionWrite = useRef(0);
 
   const saveSession = useCallback(() => {
@@ -497,6 +502,8 @@ export default function Home() {
         playing: latest.playing,
         playOrder: latest.playOrder,
         nowOpen: latest.nowOpen,
+        nowPanel: latest.nowPanel,
+        nowDrawer: latest.nowDrawer,
       }));
     } catch { /* a full storage must not stop playback */ }
   }, []);
@@ -510,6 +517,8 @@ export default function Home() {
     if (!session) return;
     setPlayOrder(session.playOrder);
     if (session.nowOpen) setNowOpen(true);
+    setNowPanel(session.nowPanel);
+    setNowDrawer(session.nowDrawer);
     if (session.track) pendingResume.current = { name: session.track, time: session.time, playing: session.playing };
     if (session.view !== shownView.current) { ignoreScrollFor.current = session.view; restoreView.current = session.view; }
     setView(session.view);
@@ -693,7 +702,7 @@ export default function Home() {
   useEffect(() => {
     if (pendingResume.current || !sessionReady.current) return;
     saveSession();
-  }, [view, playOrder, nowOpen, playing, asset?.file.name, saveSession]);
+  }, [view, playOrder, nowOpen, playing, nowPanel, nowDrawer, asset?.file.name, saveSession]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -1279,7 +1288,10 @@ export default function Home() {
         tint={nowTint}
         closing={nowClosing}
         compact={compact}
+        panel={nowPanel}
+        drawer={nowDrawer}
         media={audioRef}
+        onDisclosure={setNowDisclosure}
         onClose={() => setNowClosing(true)}
         onClosed={() => { setNowOpen(false); setNowClosing(false); }}
         onTogglePlayback={togglePlayback}

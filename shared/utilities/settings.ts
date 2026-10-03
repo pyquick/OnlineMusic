@@ -29,6 +29,9 @@ export type StoredSession = {
   playing: boolean;
   playOrder: string[];
   nowOpen: boolean;
+  /** The fullscreen view's right-hand column: which side is showing and whether it is out. */
+  nowPanel: "queue" | "lyrics";
+  nowDrawer: boolean;
 };
 
 /** Reads a stored session defensively: fields are validated and a bad blob restores nothing. */
@@ -46,5 +49,7 @@ export function readStoredSession(data: unknown): StoredSession | null {
       ? record.playOrder.filter((name): name is string => typeof name === "string" && name.length > 0)
       : [],
     nowOpen: record.nowOpen === true,
+    nowPanel: record.nowPanel === "lyrics" ? "lyrics" : "queue",
+    nowDrawer: record.nowDrawer === true,
   };
 }

@@ -17,7 +17,16 @@ describe("readStoredSession", () => {
   test("a blob missing fields restores the safe default of each", () => {
     assert.deepEqual(readStoredSession({}), {
       view: "studio", track: null, time: 0, playing: false, playOrder: [], nowOpen: false,
+      nowPanel: "queue", nowDrawer: false,
     });
+  });
+
+  test("the fullscreen panel is one of the two sides, and its column is strict", () => {
+    assert.equal(readStoredSession({ nowPanel: "lyrics" }).nowPanel, "lyrics");
+    assert.equal(readStoredSession({ nowPanel: "queue" }).nowPanel, "queue");
+    assert.equal(readStoredSession({ nowPanel: "nowhere" }).nowPanel, "queue");
+    assert.equal(readStoredSession({ nowDrawer: 1 }).nowDrawer, false);
+    assert.equal(readStoredSession({ nowDrawer: true }).nowDrawer, true);
   });
 
   test("an unknown view falls back to the studio", () => {
@@ -48,7 +57,7 @@ describe("readStoredSession", () => {
   });
 
   test("what was written reads back as the same session", () => {
-    const session = { view: "library", track: "a.mp3", time: 61.25, playing: true, playOrder: ["a.mp3", "b.mp3"], nowOpen: true };
+    const session = { view: "library", track: "a.mp3", time: 61.25, playing: true, playOrder: ["a.mp3", "b.mp3"], nowOpen: true, nowPanel: "lyrics", nowDrawer: true };
     assert.deepEqual(readStoredSession(JSON.parse(JSON.stringify(session))), session);
   });
 });

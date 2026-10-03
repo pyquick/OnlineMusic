@@ -24,12 +24,14 @@
    a wide track with a tall white knob and the speaker at its end, the level ticked off at the left
    hairline. It frosts what is behind it like every other surface, and its speaker mutes and restores. */
 .now-volume{margin-left:auto;display:flex;align-items:center;gap:12px;height:44px;padding:0 12px 0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.12);box-shadow:inset 1px 0 0 rgba(255,255,255,.34),inset 0 1px 0 rgba(255,255,255,.28);-webkit-backdrop-filter:blur(var(--material-blur-dock)) saturate(var(--material-saturate-floating));backdrop-filter:blur(var(--material-blur-dock)) saturate(var(--material-saturate-floating)) var(--glass-edge-filter,saturate(100%))}
-.now-volume input{width:clamp(96px,17vw,186px);height:26px;margin:0;appearance:none;-webkit-appearance:none;background:none;cursor:pointer;color:#fff}
-.now-volume input::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(to right,currentColor var(--seek,0%),rgba(255,255,255,.26) var(--seek,0%))}
-.now-volume input::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:26px;margin-top:-10px;border-radius:8px;background:#fff;box-shadow:0 2px 7px rgba(4,5,12,.5)}
-.now-volume input::-moz-range-track{height:6px;border-radius:999px;background:rgba(255,255,255,.26)}
-.now-volume input::-moz-range-progress{height:6px;border-radius:999px;background:#fff}
-.now-volume input::-moz-range-thumb{width:15px;height:26px;border:0;border-radius:8px;background:#fff;box-shadow:0 2px 7px rgba(4,5,12,.5)}
+.now-volume input{width:clamp(96px,17vw,186px);height:26px;margin:0;padding:0 16px;appearance:none;-webkit-appearance:none;background:none;cursor:pointer;color:#fff}
+.now-volume input::-webkit-slider-runnable-track{height:8px;border-radius:999px;background:linear-gradient(to right,currentColor var(--seek,0%),rgba(255,255,255,.26) var(--seek,0%))}
+/* The knob is a wide lozenge, not the narrow upright pill it used to be (2026-10-03, the user's
+   "音量按钮左右太窄了"): it reads as a handle on a thick track, which is what the reference shows. */
+.now-volume input::-webkit-slider-thumb{-webkit-appearance:none;width:32px;height:22px;margin-top:-7px;border-radius:11px;background:#fff;box-shadow:0 2px 7px rgba(4,5,12,.5)}
+.now-volume input::-moz-range-track{height:8px;border-radius:999px;background:rgba(255,255,255,.26)}
+.now-volume input::-moz-range-progress{height:8px;border-radius:999px;background:#fff}
+.now-volume input::-moz-range-thumb{width:32px;height:22px;border:0;border-radius:11px;background:#fff;box-shadow:0 2px 7px rgba(4,5,12,.5)}
 .now-volume-icon{display:grid;place-items:center;padding:2px;background:none;color:rgba(255,255,255,.86);transition:color .18s ease}
 .now-volume-icon:hover{color:#fff}
 @media(max-width:680px){.now-volume input{width:84px}}

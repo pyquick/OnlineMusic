@@ -28,8 +28,11 @@
 .lyr-trans{display:block;margin-top:6px;font-size:17px;font-weight:500;line-height:1.5;opacity:.66}
 .lyr-line.is-active .lyr-trans{opacity:.78}
 /* The phone's window: three blocks tall — the live one plus a neighbour above and below — and it
-   never eats a gesture, so the stage's drag and the tap that closes the sheet still see through. */
-.lyr--words{height:calc(var(--lyr-block,64px) * 3 + 40px);overflow:hidden;pointer-events:none}
+   never eats a gesture itself, so the stage's drag and the tap that closes the sheet still see
+   through; the stage hands it a vertical drag when the finger is on the words (see the view's
+   gesture). It stays a scroller — the sync hook centres the live line by scrolling this box, and
+   lyrics that carry no timing must still be readable the whole way through. */
+.lyr--words{height:calc(var(--lyr-block,64px) * 3 + 40px);pointer-events:none}
 
 /* ── The lyrics workspace ─────────────────────────────────────────────────────
    The editor is a page of its own in everything but the URL: full window, own header, own
