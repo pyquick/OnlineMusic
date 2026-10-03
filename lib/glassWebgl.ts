@@ -585,7 +585,6 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
   let lastCaptureAt = 0;
   let lastSignature = "";
   let pending = 0;
-  let captureTimer = 0;
 
   root.classList.add("glass-webgl");
   root.classList.remove("glass-rim-fallback");
@@ -1134,12 +1133,11 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
     destroy();
   }
 
-  async function runCapture() {
+  function runCapture() {
     if (destroyed) return;
     if (capturing) { captureQueued = true; return; }
     capturing = true;
-    try {
-      const raster = await capture();
+    void capture().then((raster) => {
       if (destroyed) return;
       if (!raster) { fail(); return; }
       failures = 0;
@@ -1148,17 +1146,17 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
       lastSignature = signature();
       lastCaptureAt = performance.now();
       captureScrollY = window.scrollY;
-      buildSurface(raster);
+      if (!buildSurface(raster)) { fail(); return; }
       render();
-    } catch {
+    }).catch(() => {
       fail();
-    } finally {
+    }).finally(() => {
       capturing = false;
       if (captureQueued) {
         captureQueued = false;
         requestCapture();
       }
-    }
+    });
   }
 
   /**
@@ -1174,7 +1172,7 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
       if (!pending) pending = window.setTimeout(() => { pending = 0; requestCapture(); }, wait);
       return;
     }
-    void runCapture();
+    runCapture();
   }
 
   /* ── wiring ── */
@@ -1224,6 +1222,9 @@ export function attachGlassWebgl(root: HTMLElement, initial: GlassParameters): G
     panes.forEach((pane) => pane.canvas.remove());
     panes.clear();
     dropSurface();
+    gl!.deleteBuffer(quad);
+    gl!.deleteProgram(program);
+    gl!.deleteProgram(blurProgram);
     viewport.remove();
     root.classList.remove("glass-webgl");
   }

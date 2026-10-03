@@ -311,14 +311,6 @@
     var(--glass-rim,0 0 #0000);
   -webkit-backdrop-filter:blur(var(--material-blur-pane)) saturate(var(--material-saturate));
   backdrop-filter:blur(var(--material-blur-pane)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%))}
-/* ── The page's cards are glass too ──────────────────────────────────────────
-   They take the frost from the material above — the Blur slider's blur, the studio's saturate,
-   and Clarity's alpha — but their surface is the theme's own panel role rather than the glass
-   tint's veil: a card is a sheet of the page, so on paper it is translucent white and on Ink,
-   Navy or Graphite it is translucent dark glass instead of a flat black. They take no rim: a
-   library can hold hundreds of cards and every rim pane needs a displacement map of its own. */
-:is([data-glass-edge]){
-  background:color-mix(in srgb,var(--glass-tint,255 255 255) calc(var(--glass-alpha,1) * 100%),transparent)}
 /* WebKit renders no bend for a backdrop-filter that names a filter — it does not paint the
    reference, whatever its parser answered — so the rim of lib/glassEdge.ts has nowhere to attach
    in Safari, which marks the shell with .glass-rim-fallback instead of building maps nobody can

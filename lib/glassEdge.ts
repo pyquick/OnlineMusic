@@ -304,6 +304,7 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
   document.body.appendChild(svg);
 
   const panes = new Map<HTMLElement, Pane>();
+  const mapCache = new Map<string, string>();
   const sizes = new ResizeObserver(() => schedule());
   let offset = 0;
   /** The master rainbow, 0–1; 0 keeps every pane on the plain colour-blind displacement. */
@@ -313,7 +314,6 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
   /** The corner-radius multiplier as last read: a change to it reshapes every map's corners. */
   /** The per-family base band/pull the page last handed in; empty = everything follows the sliders. */
   let groups: GlassGroupValues = {};
-  let radiusToken = "";
   let index = 0;
   let frame = 0;
 
@@ -487,8 +487,6 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     }
     // The computed radius is only read when the key changes: it costs a style flush, and the
     // size plus the radius multiplier already say whether the corners can have moved.
-    const key = `${width}x${height}x${band.toFixed(1)}x${radiusToken}`;
-    if (key === pane.geometry) return;
     const style = getComputedStyle(element);
     const limit = Math.min(width, height) / 2;
     const radius = Math.min(
@@ -497,8 +495,11 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
       parseRadius(style.borderBottomRightRadius, limit),
       parseRadius(style.borderBottomLeftRadius, limit),
     );
-    const uri = buildMap(width, height, radius, band);
+    const key = `${width}x${height}x${radius.toFixed(2)}x${band.toFixed(2)}`;
+    if (key === pane.geometry) return;
+    const uri = mapCache.get(key) ?? buildMap(width, height, radius, band);
     if (!uri) return;
+    mapCache.set(key, uri);
     pane.geometry = key;
     pane.image.setAttribute("href", uri);
     // The region is the pane's own box: the bend is defined only across the glass, so there
@@ -510,7 +511,6 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
   }
 
   function sync() {
-    radiusToken = getComputedStyle(root).getPropertyValue("--glass-radius").trim();
     const found = new Set(root.querySelectorAll<HTMLElement>("[data-glass-edge]"));
     panes.forEach((pane, element) => {
       if (found.has(element) && element.isConnected) return;
@@ -582,6 +582,7 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
       window.removeEventListener("resize", schedule);
       panes.forEach(destroyPane);
       panes.clear();
+      mapCache.clear();
       svg.remove();
     },
   };
