@@ -3,10 +3,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { attachGlassEdge } from "@/lib/glassEdge";
+import { attachGlassWebgpu, type GlassWebgpuHandle } from "@/lib/glassWebgpu";
 import { setAutoShade, startInkSampler, touchScene } from "@/lib/inkSampler";
 import { SETTINGS_STORAGE_KEY } from "@/shared/utilities/settings";
 import type { Appearance } from "@/features/appearance";
 import { DEFAULT_GLASS_SETTINGS, glassStoredFields, readGlassSettings, type GlassSettings, type StoredGlassFields } from "./model";
+
+/**
+ * The event functional code dispatches (bubbling, from the element whose box moved silently) to
+ * have the rims redraw at the new box without re-rasterising. The name is the whole contract; the
+ * phone pill's bubble is the only sender (see app/bottom-pill.tsx). A DOM event, not a handle,
+ * so no feature has to import the glass system to talk to it.
+ */
+const GLASS_REFRESH_EVENT = "glass-refresh";
 
 /** How long a colour change takes to cross the glass, in ms. The stylesheet interpolates the tint
     channels over the same span — it reads `--tint-duration`, which the style object below
@@ -37,6 +46,7 @@ export type GlassSystem = {
 export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance: Appearance): GlassSystem {
   const [settings, setSettings] = useState<GlassSettings>(DEFAULT_GLASS_SETTINGS);
   const [ready, setReady] = useState(false);
+  const webgpuRef = useRef<GlassWebgpuHandle | null>(null);
   const edgeRef = useRef<ReturnType<typeof attachGlassEdge> | null>(null);
   /** The dials of the latest render, so a re-attach can push them without depending on them. */
   const latest = useRef(settings);
@@ -73,22 +83,39 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
 
   const { blur, clarity, edge, refraction, radius, dispersion, groups } = settings;
 
-  // The rims attach once: the edge map bends each pane's backdrop, and where it cannot be built
-  // (Safari) the stylesheet's shaded rim takes over, so a pane is never left without something at
-  // its edges. The dials of the moment are pushed explicitly on attach, where the push effects
+  // The rims attach once per renderer choice. The edge map is the default and needs nothing to
+  // start; the stored "WebGPU rendering" switch asks for the shader instead, and WebKit takes it
+  // whatever the switch says — it cannot bend a backdrop in CSS at all, and WebGPU is on there by
+  // default. A device that never arrives hands the shell back here through `onUnavailable`, so a
+  // pane is never left with a canvas nobody paints, and the stylesheet's shaded rim is the floor
+  // under both. The dials of the moment are pushed explicitly on attach, where the push effects
   // below would not re-fire for values that did not change.
   useEffect(() => {
     const element = shell.current;
     if (!element) return;
     const current = latest.current;
-    const glass = attachGlassEdge(element);
-    glass.setOffset(current.edge);
-    glass.setRefraction(current.refraction);
-    glass.setDispersion(current.dispersion / 100);
-    glass.setGroups(current.groups);
-    edgeRef.current = glass;
-    return () => { glass.destroy(); edgeRef.current = null; };
-  }, []);
+    const attachEdge = () => {
+      const glass = attachGlassEdge(element);
+      glass.setOffset(current.edge);
+      glass.setRefraction(current.refraction);
+      glass.setDispersion(current.dispersion / 100);
+      glass.setGroups(current.groups);
+      edgeRef.current = glass;
+    };
+    const webgpu = attachGlassWebgpu(
+      element,
+      { blur: current.blur, clarity: current.clarity / 100, offset: current.edge, band: current.refraction, radius: current.radius / 100, dispersion: current.dispersion / 100 },
+      current.webgpu,
+      attachEdge,
+    );
+    if (webgpu) {
+      webgpuRef.current = webgpu;
+      return () => { webgpuRef.current = null; webgpu.destroy(); edgeRef.current?.destroy(); edgeRef.current = null; };
+    }
+    attachEdge();
+    return () => { edgeRef.current?.destroy(); edgeRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.webgpu]);
 
   // The ink sampler reads the shell's own luma and writes every pane's ink, shade and glow. The
   // root is handed in, so the engine never has to know the shell's class name.
@@ -98,9 +125,19 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
     return startInkSampler(element);
   }, [shell]);
 
+  // The dials, pushed live: the shader re-draws the band from the raster it already holds — and
+  // re-reads the veil clarity just rewrote — so moving one never costs a rasterisation. The tint
+  // rides along because the band carries it too, and a colour the flat middle has already changed
+  // to must not wait on the next slider move to reach the rim.
+  useEffect(() => {
+    webgpuRef.current?.setParameters({ blur, clarity: clarity / 100, offset: edge, band: refraction, radius: radius / 100, dispersion: dispersion / 100 });
+  }, [blur, clarity, edge, refraction, radius, dispersion, appearance.tint]);
   useEffect(() => { edgeRef.current?.setOffset(edge); }, [edge]);
   // The per-family bases. Absent families follow the dials, so only the overrides travel.
-  useEffect(() => { edgeRef.current?.setGroups(groups); }, [groups]);
+  useEffect(() => {
+    webgpuRef.current?.setGroups(groups);
+    edgeRef.current?.setGroups(groups);
+  }, [groups]);
   useEffect(() => { edgeRef.current?.setRefraction(refraction); }, [refraction]);
   useEffect(() => { edgeRef.current?.setDispersion(dispersion / 100); }, [dispersion]);
 
@@ -124,10 +161,20 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
     let sampled = start;
     let frame = requestAnimationFrame(function chase(now) {
       if (now - sampled >= TINT_SAMPLE_MS) { sampled = now; touchScene(); }
+      webgpuRef.current?.refresh();
       if (now - start < TINT_TRANSITION_MS) frame = requestAnimationFrame(chase);
     });
     return () => cancelAnimationFrame(frame);
   }, [appearance.tint]);
+
+  // A pane whose box moved without a DOM signal (the pill's bubble, mid-spring) tells the rims so
+  // they redraw at the new box on the next frame instead of at the next settle tick. Only the
+  // WebGPU path has a surface to redraw; the edge map follows its own geometry.
+  useEffect(() => {
+    const onRefresh = () => webgpuRef.current?.refresh();
+    document.addEventListener(GLASS_REFRESH_EVENT, onRefresh);
+    return () => document.removeEventListener(GLASS_REFRESH_EVENT, onRefresh);
+  }, []);
 
   // What the shell publishes for the stylesheet and the rim map. The formats are the contract
   // (a bare number, px with the unit, the clarity and radius as fractions).

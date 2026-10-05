@@ -113,7 +113,8 @@ export default function AppearanceSettings({ glass, onGlass, appearance, onAppea
           <RangeControl label="Blur" value={glass.blur} min={0} max={MAX_GLASS_BLUR} step={GLASS_BLUR_STEP} display={`${glass.blur}px`} onChange={(next) => onGlass({ blur: next })} />
           <RangeControl label="Clarity" value={glass.clarity} min={0} max={100} display={`${glass.clarity}%`} onChange={(next) => onGlass({ clarity: next })} />
           <RangeControl label="Corner radius" value={glass.radius} min={50} max={150} display={`${glass.radius}%`} onChange={(next) => onGlass({ radius: next })} />
-          <p className="settings-hint">Blur frosts what sits behind a pane and clarity is how much of it shows through; both apply live and are saved in this browser. Edge distortion and edge refraction now live per family, in the card below. The rims are bent by the edge map the glass draws on its own; there is no renderer to choose.</p>
+          <label className="toggle-row"><input type="checkbox" checked={glass.webgpu} onChange={(event) => onGlass({ webgpu: event.target.checked })} /><span>WebGPU rendering</span></label>
+          <p className="settings-hint">Blur frosts what sits behind a pane and clarity is how much of it shows through; both apply live and are saved in this browser. Edge distortion and edge refraction now live per family, in the card below. The rims are bent by the edge map by default — no device, no capture of the page, nothing to initialise. WebGPU rendering draws the same refraction in a shader instead: it is what Safari uses whatever this switch says, because its backdrop-filter cannot bend a backdrop, and WebGPU is on there by default. Switching re-initialises the glass.</p>
         </div>
       </div>
 
