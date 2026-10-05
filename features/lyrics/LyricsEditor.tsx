@@ -13,7 +13,7 @@ import type { Asset } from "@/shared/types/media";
 import { saveLyricsDoc } from "./client";
 import PlaybackLyrics from "./PlaybackLyrics";
 import EditorRow from "./EditorRow";
-import { stampText } from "./format";
+import { parseStamp, stampText } from "./format";
 import "./lyrics.css";
 
 /**
@@ -42,19 +42,25 @@ export type LyricsEditorProps = {
 
 type Pending = { message: string; confirm: string; run: () => void };
 
-/** The transport's clock, read straight from the element — no React state per frame. */
+/**
+ * The transport's clock, read straight from the element — no React state per frame. The elapsed
+ * side is a field: type `m:ss.mmm` (or plain seconds, the same grammar the word fields take) and
+ * the playhead goes there. The duration stays a readout. The running clock leaves the field alone
+ * while it is being typed into and re-syncs the moment it is let go.
+ */
 function TimeReadout({ media }: { media: RefObject<HTMLMediaElement | null> }) {
-  const ref = useRef<HTMLSpanElement>(null);
+  const clock = useRef<HTMLInputElement>(null);
+  const total = useRef<HTMLSpanElement>(null);
+  const typing = useRef(false);
   useEffect(() => {
     const found = media.current;
     if (!found) return;
     const audio = found;
     let frame = 0;
     const place = () => {
-      if (ref.current) {
-        const total = Number.isFinite(audio.duration) ? audio.duration : 0;
-        ref.current.textContent = `${stampText(audio.currentTime)} / ${stampText(total)}`;
-      }
+      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+      if (total.current) total.current.textContent = stampText(duration);
+      if (clock.current && !typing.current) clock.current.value = stampText(audio.currentTime);
     };
     const start = () => { if (!frame) frame = window.requestAnimationFrame(tick); };
     function tick() {
@@ -75,7 +81,35 @@ function TimeReadout({ media }: { media: RefObject<HTMLMediaElement | null> }) {
       audio.removeEventListener("loadedmetadata", place);
     };
   }, [media]);
-  return <span className="lxe-clock" ref={ref} />;
+
+  /** Moves the playhead where the stamp says; false when the text cannot be read. */
+  function seekTo(draft: string): boolean {
+    const audio = media.current;
+    const parsed = parseStamp(draft);
+    if (!audio || parsed === null) return false;
+    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+    audio.currentTime = duration > 0 ? Math.min(parsed, Math.max(0, duration - 0.05)) : parsed;
+    return true;
+  }
+
+  return (
+    <span className="lxe-clock">
+      <input ref={clock} className="lxe-clock-input" data-transport-space="" inputMode="decimal"
+        aria-label="Playhead position" title="Type a position — m:ss.mmm, or seconds"
+        onFocus={(event) => { typing.current = true; const audio = media.current; if (audio) event.currentTarget.value = stampText(audio.currentTime); event.currentTarget.select(); }}
+        onBlur={(event) => { typing.current = false; seekTo(event.currentTarget.value); const audio = media.current; if (audio) event.currentTarget.value = stampText(audio.currentTime); }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") return;
+          // Enter seeks and stays: the field keeps the caret so another stamp can follow, and the
+          // key never reaches the editor's own Enter, which stamps the selected word.
+          event.preventDefault();
+          event.stopPropagation();
+          if (seekTo(event.currentTarget.value)) { const audio = media.current; if (audio) event.currentTarget.value = stampText(audio.currentTime); }
+        }} />
+      <span aria-hidden="true"> / </span>
+      <span ref={total} />
+    </span>
+  );
 }
 
 export default function LyricsEditor({ asset, doc: initialDoc, media, playing, onTogglePlayback, onSaved, onClose }: LyricsEditorProps) {
@@ -418,8 +452,23 @@ export default function LyricsEditor({ asset, doc: initialDoc, media, playing, o
         void save();
         return;
       }
+      // Space is the transport key even in a time field: a stamp is typed as `m:ss.mmm` and a
+      // space is never part of one, so the one key that starts and stops the song should not go
+      // dead just because the pointer last touched a time box. The field is blurred on the way
+      // through — that commits the draft and leaves no ring behind.
+      if ((event.key === " " || event.code === "Space") && target instanceof HTMLInputElement && target.hasAttribute("data-transport-space")) {
+        event.preventDefault();
+        target.blur();
+        onTogglePlayback();
+        return;
+      }
       if (typing) return;
-      if (event.key === " " || event.code === "Space") { event.preventDefault(); onTogglePlayback(); return; }
+      if (event.key === " " || event.code === "Space") {
+        event.preventDefault();
+        if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) document.activeElement.blur();
+        onTogglePlayback();
+        return;
+      }
       if (event.key === "Enter") {
         event.preventDefault();
         const selected = rangeRef.current;

@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useEffect, type RefObject } from "react";
 import { Activity, Pause, Play, SlidersHorizontal, X } from "@/design-system/components/icons";
 import { RangeControl } from "@/design-system/components/RangeControl";
 import { WaveformTrack } from "@/features/player";
@@ -39,6 +39,26 @@ export default function ParametersScreen({
   onRate, onVolume, onGain, onEq, onFadeIn, onFadeOut,
   onTogglePlayback, onSave, onClose,
 }: ParametersScreenProps) {
+  // Space is the transport key here too. This screen covers the window, which stands the page's
+  // own listener down, so without this the one key that starts and stops the song would go dead
+  // exactly while the sound is being shaped. A slider keeps the key (its arrows are its own); a
+  // field does not, since Space belongs to whatever is being typed.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== " " && event.code !== "Space") return;
+      if (event.repeat || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.type !== "range") return;
+      if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+      if (target instanceof HTMLElement && target.isContentEditable) return;
+      event.preventDefault();
+      if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) document.activeElement.blur();
+      onTogglePlayback();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onTogglePlayback]);
+
   return (
     <section className="parameter-screen">
       <div className="parameter-header"><h1>{title}</h1><button className="ghost-button" data-glass-edge="" onClick={onClose}><X size={16} /> Close editor</button></div>

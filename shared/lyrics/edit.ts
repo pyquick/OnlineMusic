@@ -112,23 +112,49 @@ export function tokenizeAllLines(doc: LyricsDoc): LyricsDoc {
   return next;
 }
 
+/**
+ * Renames one word, and the sentence follows: the line's text is its words in order, and the
+ * renderer finds each word inside that text to keep the gaps between them, so a rename that left
+ * the sentence behind would break every fill from this word on. The new text is spliced into the
+ * exact place the word occupied; when the line has drifted away from its words (hand-edited text
+ * that no longer contains one of them) the words are simply joined back together instead.
+ */
 export function setTokenText(doc: LyricsDoc, lineIndex: number, tokenIndex: number, text: string): LyricsDoc {
-  return replaceTokens(doc, lineIndex, (tokens) => {
-    if (!tokens[tokenIndex]) return tokens;
-    tokens[tokenIndex] = { ...tokens[tokenIndex], text };
-    return tokens;
-  });
+  const line = doc.lines[lineIndex];
+  const tokens = line?.tokens;
+  const token = tokens?.[tokenIndex];
+  if (!line || !tokens || !token) return doc;
+  const offsets = tokenOffsets(line.text, tokens);
+  const renamed = tokens.map((entry, index) => (index === tokenIndex ? text : entry.text));
+  const nextText = offsets.length
+    ? line.text.slice(0, offsets[tokenIndex]) + text + line.text.slice(offsets[tokenIndex] + token.text.length)
+    : renamed.reduce((joined, word) => joinText(joined, word), "");
+  return replace(doc, lineIndex, (entry) => ({
+    ...entry,
+    text: nextText,
+    tokens: (entry.tokens ?? []).map((current, index) => (index === tokenIndex ? { ...current, text } : current)),
+  }));
 }
 
+/**
+ * Sets the edges present in `span`. Neighbouring words share their boundary — a word's end *is*
+ * the next word's start, the same rule the Enter stamps follow — so an end written here carries
+ * straight to the next word's start; a word never ends where the next one does not begin. A
+ * start is left as an edit of its own: a deliberately late word (a rest before it) stays a gap
+ * rather than dragging the previous word's end along with it.
+ */
 export function setTokenSpan(doc: LyricsDoc, lineIndex: number, tokenIndex: number, span: { start?: number; end?: number }): LyricsDoc {
   return replaceTokens(doc, lineIndex, (tokens) => {
     const token = tokens[tokenIndex];
     if (!token) return tokens;
+    const end = span.end === undefined ? token.end : round3(Math.max(0, span.end));
     tokens[tokenIndex] = {
       text: token.text,
       start: span.start === undefined ? token.start : round3(Math.max(0, span.start)),
-      end: span.end === undefined ? token.end : round3(Math.max(0, span.end)),
+      end,
     };
+    const next = tokens[tokenIndex + 1];
+    if (span.end !== undefined && next) tokens[tokenIndex + 1] = { ...next, start: end };
     return tokens;
   });
 }

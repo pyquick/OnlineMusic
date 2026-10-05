@@ -67,10 +67,28 @@
 .lxe-transport-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 /* The studio's slider primitive has no display of its own; in a card it is a block. */
 .lxe-side .range-control{display:block}
-.lxe-clock{color:var(--muted);font:var(--text-lg) var(--font-mono)}
+/* The clock the tape is read from: the elapsed side is a field (type a stamp, the playhead goes
+   there), the duration is not. Both keep the readout's mono face; only the field takes a rim. */
+.lxe-clock{display:inline-flex;align-items:center;gap:2px;color:var(--muted);font:var(--text-lg) var(--font-mono)}
+/* Wide enough for the longest stamp (`mm:ss.mmm`) plus the box's own padding and rim. Sized by
+   the character alone it clipped the value — `ch` measures the font's zero, which is narrower
+   than the digits actually set — and `text-align: right` then ate the leading digit, the wrong
+   end to lose on a clock. */
+/* The box hugs what it holds: the field is sized by its content where the browser can do it
+   (`field-sizing`), and the fallback width fits `mm:ss.mmm` for the ones that cannot. Its right
+   edge is what the row pins, so the box gives way on the left — the digits stay exactly where
+   the playhead put them. The rim it takes on focus is the whole focus treatment: this is a
+   transport control, and the keyboard's ring around it reads as a red box on the clock. */
+.lxe-clock-input{width:calc(9ch + 18px);padding:3px 6px;border:1px solid transparent;border-radius:8px;background:none;color:inherit;font:inherit;text-align:right}
+.lxe-clock-input:focus-visible{outline:none}
+@supports (field-sizing: content){.lxe-clock-input{field-sizing:content;width:auto;min-width:calc(8ch + 14px)}}
+.lxe-clock-input:hover{background:var(--lxe-field)}
+.lxe-clock-input:focus{border-color:var(--line);background:var(--lxe-field)}
 .lxe-offset{display:flex;align-items:center;gap:8px}
 .lxe-offset label{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:var(--text-md)}
 .lxe-offset input,.lxe-time-input,.lxe-token-text{width:78px;padding:6px 8px;border-radius:var(--radius-control);border:1px solid var(--line);background:var(--lxe-field);color:var(--ink);font:var(--text-md) var(--font-mono)}
+/* A stamp is `m:ss.mmm` now: eight characters at least, nine once the minutes reach two digits. */
+.lxe-time-input{width:90px}
 .lxe-keys{margin:0;color:var(--muted);font-size:var(--text-md);text-align:center}
 .lxe-rows{display:flex;flex-direction:column;gap:12px;padding:0 2px 18px}
 .lxe-row{border:1px solid var(--line);border-radius:var(--radius-card);padding:12px 14px}
@@ -108,7 +126,11 @@
 .lxe-chip b{font-weight:600}
 .lxe-chip small{color:var(--muted);font:var(--text-xs) var(--font-mono)}
 .lxe-chip.is-selected{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
-.lxe-token-edit{display:flex;align-items:center;gap:8px;margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+/* The word's own panel: it says which word it is editing before showing the fields, so the click
+   that opened it reads as an answer rather than as nothing happening. */
+.lxe-token-edit{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.lxe-token-edit-label{flex:none;color:var(--muted);font-size:var(--text-md);white-space:nowrap}
+.lxe-token-edit-label b{color:var(--accent-ink);font-weight:600}
 .lxe-token-text{flex:1;min-width:0;width:auto;font-family:var(--font-sans)}
 .lxe-empty{margin:26px 0;color:var(--muted);text-align:center}
 .lxe-add-line{align-self:flex-start}

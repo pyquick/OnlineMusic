@@ -99,13 +99,21 @@ let autoShade = true;
 /** Set while a scene change has happened that no listener of ours would hear. */
 let dirty = true;
 let allDirty = true;
+/** The running sampler's own "sample on the next frame", installed while it lives. */
+let wake: (() => void) | null = null;
 
 /**
  * Tells the sampler the scene changed. Everything it watches for itself — scroll, resize, media
  * events, mutations — marks this on its own; this is for the caller that changes the backdrop or
  * the tint, which are attributes on one element and raise no event at all.
  */
-export function touchScene() { dirty = true; allDirty = true; }
+export function touchScene() {
+  dirty = true;
+  allDirty = true;
+  // An animated value changes without any event of its own — the caller re-marks the scene every
+  // few frames while it moves — so the next read has to happen now rather than at the cadence.
+  wake?.();
+}
 
 /** Turns the glass's automatic light/dark off, or back on, from Settings. */
 export function setAutoShade(on: boolean) {
@@ -539,6 +547,7 @@ export function startInkSampler(root: HTMLElement): () => void {
   function schedule() {
     if (!frame) frame = window.requestAnimationFrame(tick);
   }
+  wake = schedule;
 
   const markDirty = () => { markAll(); };
   const onScroll = (event: Event) => { markScroll(event.target); };
@@ -557,6 +566,7 @@ export function startInkSampler(root: HTMLElement): () => void {
   schedule();
 
   return () => {
+    if (wake === schedule) wake = null;
     window.clearInterval(timer);
     if (frame) window.cancelAnimationFrame(frame);
     mutations.disconnect();

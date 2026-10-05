@@ -9,13 +9,17 @@
  * context is never asked to block mixed content, so the app can fetch a plain-http LAN server
  * (http://192.168.x.x) as freely as an https one.
  *
+ * An https server with a self-signed certificate is accepted for the packaged host alone (see
+ * tls.js), which is what makes an https LAN deployment usable without installing its CA.
+ *
  * The page is otherwise exactly the web client: nothing of Node crosses the bridge except the
  * one flag and the default server address (see preload.js).
  */
 
-const { app, BrowserWindow, net, protocol } = require("electron");
+const { app, BrowserWindow, net, protocol, session } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { installCertificatePolicy } = require("./tls");
 
 // Must run before app is ready.
 protocol.registerSchemesAsPrivileged([
@@ -76,6 +80,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   protocol.handle("app", serve);
+  installCertificatePolicy(session.defaultSession);
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

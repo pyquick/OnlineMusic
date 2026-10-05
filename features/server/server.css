@@ -1,5 +1,0 @@
-/* The server-address card: the field borrows the shell's field glass (its class is in the shared
-   field list) and only its own layout lives here. */
-.server-card label{display:block;color:var(--ink-soft,#8a90a2);font-size:var(--text-sm)}
-.server-field{display:block;width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--panel2);outline:none;font-size:var(--text-md)}
-.server-field:focus{border-color:#ffb0b3;background:var(--panel)}

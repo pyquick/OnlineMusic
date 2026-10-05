@@ -8,16 +8,24 @@ services:
     environment:
       NODE_ENV: production
       AUTH_DATA_DIR: /app/data
+      # The container terminates TLS on the same port it answers http on (see
+      # scripts/serve-https.mjs: the first byte of a connection picks the protocol). The names
+      # its generated certificate should cover — set this to the address clients use:
+      TLS_HOSTS: 192.168.1.156
+      # Mount an existing pair instead of the generated certificate:
+      # TLS_CERT_FILE: /certs/cert.pem
+      # TLS_KEY_FILE: /certs/key.pem
+      # Or serve plain http only, with no TLS front door at all:
+      # TLS_DISABLE: "1"
       # The origins the API answers cross-origin requests from (comma-separated, credentials
       # included). Uncomment for the desktop app and any separately hosted client — see README.
-      # ALLOWED_ORIGINS: app://bundle
+      ALLOWED_ORIGINS: app://bundle
     restart: unless-stopped
     volumes:
       - music_data:/app/data
-  # The HTTPS edge for the API, for when clients reach the server from another machine (the
-  # desktop app pointed at this host, or a hosted client). Uncomment, set your host in Caddyfile,
-  # then reach the API at https://your-host. `tls internal` self-signs for LAN use; give Caddy a
-  # domain it can verify for a public certificate instead.
+  # Optional: a publicly trusted certificate in front of the API. The web container already
+  # terminates TLS on 3000, so this is only needed for a real domain — uncomment, set your host
+  # in Caddyfile, set `TLS_DISABLE: "1"` on the web service, and point clients at https://your-host.
   # proxy:
   #   image: caddy:2-alpine
   #   restart: unless-stopped

@@ -18,9 +18,10 @@ import { parseLyrics, parseLyricsJson, docFromLines } from "../shared/lyrics/par
 import { toLrc } from "../shared/lyrics/serialize.ts";
 import { lineAt, lineEnd, lineState, tokenProgress, tokenFill, docDuration, hasTiming, hasWordTiming } from "../shared/lyrics/timeline.ts";
 import { tokenizeText, tokenizeLine } from "../shared/lyrics/tokenizer.ts";
+import { parseStamp, stampText } from "../features/lyrics/format.ts";
 import {
   addLine, deleteLine, setLineTranslation, setLineSpan, moveLine, tokenizeLineAt, tokenizeAllLines,
-  splitLine, mergeLines, shiftAll, earliestTime, setTokenSpan, mergeTokens, moveToken,
+  splitLine, mergeLines, shiftAll, earliestTime, setTokenSpan, setTokenText, mergeTokens, moveToken, tokenOffsets,
 } from "../shared/lyrics/edit.ts";
 import { validateLyricsDoc, coerceLyricsDoc, LyricsValidationError } from "../shared/lyrics/validation.ts";
 import { MAX_LYRICS_LINES, MAX_TOKENS_PER_LINE } from "../shared/lyrics/types.ts";
@@ -327,6 +328,73 @@ describe("lyrics editing", () => {
     assert.equal(merged.lines[0].tokens.length, 3);
     assert.equal(merged.lines[0].tokens[1].text, "好世");
     assert.equal(merged.lines[0].tokens[1].start, undefined);
+  });
+
+  test("renaming a word rewrites the sentence around it, timing untouched", () => {
+    const doc = tokenizeLineAt({ version: 1, lines: [{ text: "Hello, big world", start: 0, end: 3 }] }, 0);
+    const renamed = setTokenText(doc, 0, 1, "small");
+    assert.deepEqual(renamed.lines[0].tokens.map((token) => token.text), ["Hello,", "small", "world"]);
+    assert.equal(renamed.lines[0].text, "Hello, small world");
+    assert.equal(renamed.lines[0].tokens[1].start, doc.lines[0].tokens[1].start);
+    assert.equal(renamed.lines[0].tokens[1].end, doc.lines[0].tokens[1].end);
+    assert.equal(doc.lines[0].text, "Hello, big world");            // the input document is untouched
+  });
+
+  test("a renamed word keeps the renderer able to find every word in the sentence", () => {
+    const doc = tokenizeLineAt({ version: 1, lines: [{ text: "海阔天空" }] }, 0);
+    const renamed = setTokenText(doc, 0, 2, "云");
+    assert.equal(renamed.lines[0].text, "海阔云空");
+    assert.deepEqual(tokenOffsets(renamed.lines[0].text, renamed.lines[0].tokens), [0, 1, 2, 3]);
+  });
+
+  test("a sentence that drifted from its words is rebuilt from them", () => {
+    const drifted = { version: 1, lines: [{ text: "completely different words", tokens: [{ text: "One" }, { text: "two" }] }] };
+    const fixed = setTokenText(drifted, 0, 1, "second");
+    assert.equal(fixed.lines[0].text, "One second");
+    assert.equal(setTokenText(drifted, 0, 9, "nope"), drifted);      // no such word: nothing changes
+  });
+
+  test("a word's end carries to the next word's start", () => {
+    const doc = { version: 1, lines: [{ text: "a b c", tokens: [{ text: "a" }, { text: "b" }, { text: "c" }] }] };
+    const closed = setTokenSpan(doc, 0, 0, { end: 1.25 });
+    assert.equal(closed.lines[0].tokens[0].end, 1.25);
+    assert.equal(closed.lines[0].tokens[1].start, 1.25);           // the boundary belongs to both
+    assert.equal(closed.lines[0].tokens[2].start, undefined);      // only the neighbour follows
+    assert.equal(doc.lines[0].tokens[1].start, undefined);         // the input document is untouched
+    const last = setTokenSpan(closed, 0, 2, { end: 3 });
+    assert.equal(last.lines[0].tokens[2].end, 3);                  // the final word has no neighbour
+  });
+
+  test("a late start stays a gap instead of dragging the previous end", () => {
+    const doc = { version: 1, lines: [{ text: "a b", tokens: [{ text: "a", start: 0, end: 1 }, { text: "b" }] }] };
+    const started = setTokenSpan(doc, 0, 1, { start: 2 });
+    assert.equal(started.lines[0].tokens[1].start, 2);
+    assert.equal(started.lines[0].tokens[0].end, 1);               // the previous word keeps its end
+  });
+
+  test("time fields read m:ss.mmm and bare seconds alike", () => {
+    assert.equal(parseStamp("0:30.474"), 30.474);
+    assert.equal(parseStamp("30.474"), 30.474);                      // bare seconds get their 0:
+    assert.equal(parseStamp("1:15"), 75);
+    assert.equal(parseStamp("1:15.25"), 75.25);
+    assert.equal(parseStamp(" 0:05 "), 5);
+    assert.equal(parseStamp("0：05"), 5);                            // a full-width colon is a colon
+    assert.equal(parseStamp(""), null);
+    assert.equal(parseStamp("  "), null);
+    assert.equal(parseStamp("1:"), null);                            // both halves must be given
+    assert.equal(parseStamp(":30"), null);
+    assert.equal(parseStamp("0:30:00"), null);
+    assert.equal(parseStamp("abc"), null);
+    assert.equal(parseStamp("-5"), null);
+  });
+
+  test("a seconds part over 59 carries instead of being printed back", () => {
+    assert.equal(parseStamp("0:75.5"), 75.5);
+    assert.equal(stampText(75.5), "1:15.500");                       // never shows 0:75
+    assert.equal(stampText(9.5), "0:09.500");
+    assert.equal(stampText(0), "0:00.000");
+    assert.equal(stampText(undefined), "–:––.–––");
+    assert.equal(parseStamp(stampText(90.474)), 90.474);             // the field's round trip holds
   });
 
   test("an untimed token cannot be nudged, and shifts leave it alone", () => {

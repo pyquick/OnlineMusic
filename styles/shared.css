@@ -47,7 +47,13 @@
 /* A Mac with keyboard navigation switched on makes Chrome call every focus focus-visible, so the
    rule above is not enough to keep the ring off a click. The shell carries `data-pointer` from the
    last pointerdown until the next keydown; while it does, no focus draws a ring. */
-.studio-shell[data-pointer] :focus-visible{outline:none}/* The page's backdrop lives on its own fixed element rather than on the shell, so it holds still
+.studio-shell[data-pointer] :focus-visible{outline:none}
+/* The play/pause control is worked with the space bar as often as with the pointer, and the key
+   leaves the ring on a round control that has just been pressed — on the editor's red button it
+   reads as a second, red box. It is the one control the studio keeps ringless; everything else
+   keeps the ring the keyboard asked for. */
+:is(.player-button,.now-play,.lxe-transport .primary-button,.parameter-card .primary-button):focus-visible{outline:none}
+/* The page's backdrop lives on its own fixed element rather than on the shell, so it holds still
    while the page scrolls over it, and it is a real element rather than a ::before because the
    WebGL path walks the element tree into its raster — a backdrop painted any other way would be
    missing behind every rim band. Layer one is the optional scrim over a photo, layer two the
@@ -226,6 +232,18 @@
 .video-dock-hit-zone{position:absolute;z-index:7;left:0;right:0;bottom:0;height:150px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:16px;pointer-events:auto}
 .video-dock-hit-zone .video-player-dock{position:relative;left:auto;bottom:auto;z-index:8;transform:none;translate:0 10px;visibility:hidden;pointer-events:none;transition:translate .2s ease,visibility 0s linear .2s}
 .video-dock-hit-zone:hover .video-player-dock,.video-dock-hit-zone.is-visible .video-player-dock{translate:0 0;visibility:visible;pointer-events:auto;transition-delay:0s,0s}
+/* The rail slides out of the left edge under the pointer, and the dock used to sit right under it —
+   two glass surfaces stacked into one another. While the rail is out the dock gives way instead:
+   the hit zone's left edge steps past the rail, so the bar shrinks toward the right (its width is
+   the space that is left) and grows back to its centred, original size the moment the rail goes
+   in. Focus counts as being out, so tabbing into the rail cannot hide the dock's left end either. */
+/* Only where the rail exists at all: below 681px the sidebar it holds is not rendered, so the
+   strip must not shrink the dock on a phone — there it would squeeze the row into nothing. */
+@media(min-width:681px){
+  .video-dock-hit-zone{transition:padding-left .32s var(--ease-glass)}
+  .video-shell-sidebar:hover ~ .video-dock-hit-zone,
+  .video-shell-sidebar:focus-within ~ .video-dock-hit-zone{padding-left:calc(18px + 244px + 16px)}
+}
 
 /* Album grouping in the collection views. */
 .album-group{margin-bottom:34px}
@@ -624,3 +642,97 @@
 @media(max-width:680px){.player.glass-bar{grid-template-columns:minmax(0,1fr) auto}.player.glass-bar .player-actions{display:flex}.lyrics-panel{bottom:92px}.projects-panel{right:10px;bottom:92px;width:calc(100vw - 20px)}}
 @media(max-width:680px){.settings-page-head{flex-direction:column;align-items:stretch}.settings-card{padding:18px}}
 @media(prefers-reduced-motion:reduce){.ambient-orb,.glass-bar,.glass-bar.audio-playing::after,.glass-bar .mini-cover.is-playing::after,.lyrics-body p,.glass-panel,.settings-page,.player-button svg,.player-button.is-starting::after,.now-play.is-starting::after,.now-view,.now-sheet-hint{animation:none!important}}
+
+/* The empty editor doubles as the library picker: each row selects that asset for editing, so a
+   library full of media never needs an import just to open something. */
+.empty-editor{margin-top:20px;padding:28px 25px;display:flex;flex-direction:column;align-items:stretch;gap:0}
+.empty-editor-head{display:flex;align-items:center;gap:16px}
+.asset-picker{margin-top:18px;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto}
+.asset-picker-row{appearance:none;display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;text-align:left;background:var(--panel2);border:1px solid transparent;border-radius:var(--radius-inner);transition:.15s}
+.asset-picker-row:hover{border-color:#ffb8bb;background:color-mix(in srgb,var(--ink) 5%,transparent)}
+.asset-picker-more{border-style:dashed}
+.asset-picker-icon{width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:10px;background:var(--accent-soft);color:var(--accent)}
+.asset-picker-text{min-width:0}
+.asset-picker-text strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-md);color:var(--ink)}
+.asset-picker-text small{display:block;margin-top:3px;color:var(--muted);font-size:var(--text-xs)}
+@media(max-width:680px){.empty-editor-head{align-items:start;flex-wrap:wrap}.empty-editor .small-action{margin-left:0}}
+
+/* ── The glass changes colour on a clock ─────────────────────────────────────
+   A tint used to land in a single frame. Registered as animatable numbers, the three channels can
+   be interpolated, so the veil the stylesheet paints from them, the rims that bend the same
+   colours, and the ink the sampler measures against them all cross over together. The duration is
+   published by the glass system (`--tint-duration`, features/glass) because it chases the same
+   clock to keep the WebGL band in step; the transition arms only after the first paint, or a
+   stored tint would glide in from neutral on every load. */
+@property --glass-tint-r{syntax:"<number>";inherits:true;initial-value:255}
+@property --glass-tint-g{syntax:"<number>";inherits:true;initial-value:255}
+@property --glass-tint-b{syntax:"<number>";inherits:true;initial-value:255}
+.studio-shell[data-tint-live]{transition:--glass-tint-r var(--tint-duration,600ms) var(--ease-glass),--glass-tint-g var(--tint-duration,600ms) var(--ease-glass),--glass-tint-b var(--tint-duration,600ms) var(--ease-glass)}
+@media(prefers-reduced-motion:reduce){.studio-shell[data-tint-live]{transition:none}}
+
+/* ── Controls share a row by shrinking, never by overlapping ─────────────────
+   Two controls may want the same strip of the bar; the smaller one gives way instead of the two
+   piling up. The breadcrumb words ellipsise first (they are the only part that can lose
+   characters), the search field narrows to a working floor, and the icon buttons — the smallest
+   controls on the bar — keep their boxes untouched. On a phone the field takes the breadcrumbs'
+   place outright rather than floating over the page below the bar. */
+.breadcrumbs{min-width:0}
+.breadcrumbs strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top-actions{flex:none}
+.search-input{flex:0 1 190px;min-width:96px}
+@media(max-width:680px){
+  .topbar[data-searching] .breadcrumbs{display:none}
+  .search-input{position:static;inset:auto;flex:1 1 auto;min-width:0;width:auto;order:-1}
+}
+/* Every other row of controls follows the same rule: the words are what shrink — a heading wraps
+   to a second line rather than pushing the buttons beside it out of their box. */
+:is(.welcome-row,.collection-heading,.panel-heading,.settings-page-head,.section-heading,.lgs-ctl,.player-controls,.asset-tools){min-width:0}
+:is(.welcome-row,.collection-heading,.panel-heading,.settings-page-head)>:first-child{min-width:0}
+:is(.welcome-row,.collection-heading,.panel-heading,.settings-page-head) :is(h1,h2,p){overflow-wrap:anywhere}
+
+/* ── The bar's controls share their row instead of covering each other ────────
+   Two controls never sit on the same pixels: every column and every flex child of the bar may
+   shrink below its content's own width (`min-width:0` is what allows that), and the smaller
+   pieces give way in a fixed order as the bar narrows — the seek's time labels first, then the
+   round tiles and their glyphs, then the transport's shuffle and repeat toggles, and finally the
+   title's column, which lets the transport keep the middle. Nothing here hides the play disc or
+   the seek: those are the row's reason to exist, and everything else moves for them.
+   The steps ride the bar's own width — a container query, not the window's — so the thresholds
+   hold wherever the shell places the bar. The phone layout below 680px keeps its own rules; these
+   begin at 681. */
+.player{container-type:inline-size;container-name:bar}
+.player :is(.now-playing,.player-controls,.player-actions,.progress-wrap,.volume-cluster){min-width:0}
+.player .progress-wrap input{min-width:34px}
+/* A transport that can step carries two toggles the plain one does not; the seek's labels are the
+   smallest pieces in the row, so they step out for it and only a bar with room to spare brings
+   them back. */
+.player[data-steppable] .progress-wrap>span{display:none}
+@media(min-width:681px){
+  @container bar (min-width:900px){.player[data-steppable] .progress-wrap>span{display:block}}
+  @container bar (max-width:760px){.progress-wrap>span{display:none}}
+  /* The round controls step down a size so the seek keeps a usable length. */
+  @container bar (max-width:800px){
+    .glass-button{width:30px;height:30px}
+    .transport-step svg{width:20px;height:20px}
+    .player-button svg{width:34px;height:34px}
+    .transport-extra svg{width:14px;height:14px}
+  }
+  /* Then the two toggles leave the row entirely. The selector keeps the bar's own name on it:
+     the transport's rule lives in shell.css, which loads after this file, and an equal-weight
+     selector there would win the cascade. */
+  @container bar (max-width:720px){.player .transport-extra{display:none}}
+  /* And at the tight end the title's column yields to the transport — the phone bar's own trade. */
+  @container bar (max-width:568px){
+    .glass-button{width:28px;height:28px}
+    .transport-step svg{width:18px;height:18px}
+    .player-button svg{width:30px;height:30px}
+    .volume-cluster.is-open .volume-slider{width:64px}
+  }
+  /* The unfolded volume pill is a control too: on a narrow bar it takes less room to unfold. */
+  @container bar (max-width:800px){.volume-cluster.is-open .volume-slider{width:72px}}
+}
+/* A container's own box cannot answer its own query, so the grid — which lives on the bar itself —
+   steps here, by the window: at 681–860px the shell's bar is at most 590px wide. */
+@media(min-width:681px) and (max-width:860px){
+  .player.glass-bar{grid-template-columns:minmax(0,.65fr) minmax(0,1.35fr) auto}
+}

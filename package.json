@@ -6,7 +6,7 @@
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
     "build:client": "node scripts/export-client.mjs",
-    "package:mac": "npm run build:client && node scripts/package-mac.mjs",
+    "package:mac": "npm run build:client && node scripts/package-mac.mjs --server=https://192.168.1.156:3000",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

@@ -3,7 +3,10 @@
  *
  * `npm run package:mac` first builds the static export (`out/`), then this script:
  *   1. copies node_modules/electron/dist/Electron.app to dist/onlineMusic.app,
- *   2. drops the shell (desktop/) and the exported UI into Contents/Resources/app/,
+ *   2. drops the shell (desktop/) and the exported UI into Contents/Resources/app/, baking the
+ *      `--server=<url>` address into preload.js (the address the page reads) and tls.js (the
+ *      certificate policy an https address needs); without the flag the shell keeps its local
+ *      default,
  *   3. rewrites the identity in Info.plist (name, bundle id, icon) with PlistBuddy,
  *   4. renders desktop/icon.svg into an .icns through sips + iconutil,
  *   5. ad-hoc signs the bundle so Gatekeeper leaves a locally built app alone.
@@ -12,7 +15,7 @@
  * is a nice-to-have and the script finishes without it rather than failing.
  */
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -21,6 +24,8 @@ const APP_NAME = "onlineMusic";
 const TARGET = path.join(ROOT, "dist", `${APP_NAME}.app`);
 const TEMPLATE = path.join(ROOT, "node_modules", "electron", "dist", "Electron.app");
 const OUT_DIR = path.join(ROOT, "out");
+/** The server the packaged app will fetch from; "" leaves the shell's own default in place. */
+const SERVER_URL = readServerFlag();
 
 if (!existsSync(TEMPLATE)) {
   console.error("Electron is not installed — run `npm install` first.");
@@ -43,9 +48,9 @@ const resources = path.join(TARGET, "Contents", "Resources");
 rmSync(path.join(resources, "default_app.asar"), { force: true });
 const appDir = path.join(resources, "app");
 mkdirSync(appDir, { recursive: true });
-for (const file of ["main.js", "preload.js", "package.json"]) {
-  cpSync(path.join(ROOT, "desktop", file), path.join(appDir, file));
-}
+cpSync(path.join(ROOT, "desktop", "main.js"), path.join(appDir, "main.js"));
+cpSync(path.join(ROOT, "desktop", "package.json"), path.join(appDir, "package.json"));
+for (const file of ["preload.js", "tls.js"]) writeShellFile(file, path.join(appDir, file));
 cpSync(OUT_DIR, path.join(appDir, "out"), { recursive: true });
 
 buildIcon(resources);
@@ -68,7 +73,41 @@ for (const [key, value] of [
 try { execFileSync(PLIST_BUDDY, ["-c", "Delete :ElectronTeamID", plist], { stdio: "ignore" }); } catch { /* no such key */ }
 
 execFileSync("codesign", ["--force", "--deep", "--sign", "-", TARGET]);
-console.log(`packaged ${TARGET}`);
+console.log(`packaged ${TARGET}${SERVER_URL ? ` (server ${SERVER_URL})` : ""}`);
+
+/**
+ * The `--server=<url>` flag (also accepted as `--server <url>`), read from the end so a later
+ * occurrence wins: `npm run package:mac -- --server=http://elsewhere:3000` overrides the address
+ * the script itself passes. The address must be a full http:// or https:// URL.
+ */
+function readServerFlag() {
+  const argv = process.argv.slice(2);
+  let value = "";
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === "--server") { value = argv[index + 1] ?? ""; index += 1; }
+    else if (argv[index].startsWith("--server=")) value = argv[index].slice("--server=".length);
+  }
+  value = value.trim().replace(/\/+$/, "");
+  if (value && !/^https?:\/\/[^/]+/i.test(value)) {
+    console.error(`--server must be a full http:// or https:// address (got "${value}")`);
+    process.exit(1);
+  }
+  return value;
+}
+
+/** Copies a shell file into the bundle, with its default server swapped for the flag's address. */
+function writeShellFile(name, target) {
+  const source = readFileSync(path.join(ROOT, "desktop", name), "utf8");
+  if (!SERVER_URL) { writeFileSync(target, source); return; }
+  const literal = /const DEFAULT_SERVER_URL = "[^"]*";/;
+  if (!literal.test(source)) {
+    console.error(`desktop/${name} no longer carries a DEFAULT_SERVER_URL literal — the --server flag cannot be applied.`);
+    process.exit(1);
+  }
+  const line = `const DEFAULT_SERVER_URL = ${JSON.stringify(SERVER_URL)};`;
+  const baked = source.replace(/const DEFAULT_SERVER_URL = "[^"]*";/, () => line);
+  writeFileSync(target, baked);
+}
 
 /** Any symlink a copy step resolved into an absolute path is re-pointed inside the bundle. */
 function relinkAbsoluteSymlinks(where) {

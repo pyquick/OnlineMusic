@@ -3,7 +3,7 @@
 import { useState, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyphs";
 import { mergeLines, setLineSpan, setLineTranslation, setLineText, setTokenSpan, setTokenText, deleteToken, moveLine, splitLine, tokenizeLineAt, addLine, deleteLine, type LyricsDoc, type LyricsLine } from "@/shared/lyrics";
-import { stampText } from "./format";
+import { parseStamp, stampText } from "./format";
 
 /**
  * One lyric line's row: the sentence, its words, its translation, its span on the ruler. The row
@@ -36,22 +36,41 @@ export type EditorRowProps = {
   playhead: () => number;
 };
 
-/** A number input that keeps a draft while typing and commits on blur or Enter. */
+/**
+ * A time field: shows `m:ss.mmm`, reads the same back (bare seconds included — see `parseStamp`),
+ * and keeps the draft while typing. Blur commits. Enter commits too, but stays in the field and
+ * prints what was understood, so the editor's own stamp key — which rewrites the selected word's
+ * end at the playhead — is never what a second Enter press lands on.
+ */
 function TimeInput({ value, title, onChange }: { value: number | undefined; title: string; onChange: (value: number) => void }) {
-  const [draft, setDraft] = useState(value === undefined ? "" : value.toFixed(3));
+  const [draft, setDraft] = useState(value === undefined ? "" : stampText(value));
   const [focused, setFocused] = useState(false);
-  const shown = focused ? draft : value === undefined ? "" : value.toFixed(3);
-  const commit = () => {
-    const parsed = Number(draft);
-    if (draft.trim() !== "" && Number.isFinite(parsed)) onChange(Math.max(0, parsed));
-    setFocused(false);
-  };
+  // The edit belongs to the word the field was opened on: clicking another chip changes the
+  // selection first and only then blurs this input, and a commit that read the current props
+  // would write the number into that *other* word — which is exactly how an end typed here used
+  // to land on the next word's own end.
+  const commitTo = useRef(onChange);
+  const shown = focused ? draft : value === undefined ? "" : stampText(value);
   return (
-    <input className="lxe-time-input" data-glass-edge="" inputMode="decimal" value={shown} title={title} placeholder="–"
-      onFocus={() => { setDraft(value === undefined ? "" : value.toFixed(3)); setFocused(true); }}
+    <input className="lxe-time-input" data-glass-edge="" data-transport-space="" inputMode="decimal" value={shown} title={title} placeholder="–"
+      onFocus={() => { commitTo.current = onChange; setDraft(value === undefined ? "" : stampText(value)); setFocused(true); }}
       onChange={(event) => setDraft(event.target.value)}
-      onBlur={commit}
-      onKeyDown={(event) => { if (event.key === "Enter") { commit(); (event.target as HTMLInputElement).blur(); } }} />
+      onBlur={() => {
+        const parsed = parseStamp(draft);
+        if (parsed !== null) commitTo.current(parsed);
+        setFocused(false);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter") return;
+        // The key is consumed here: it must not travel on to the editor's Enter, which stamps the
+        // selected word's end at the playhead — the "the end changed by itself" the fields had.
+        event.preventDefault();
+        event.stopPropagation();
+        const parsed = parseStamp(draft);
+        if (parsed !== null) { setDraft(stampText(parsed)); commitTo.current(parsed); }
+        else if (value !== undefined) setDraft(stampText(value));
+        setFocused(true);
+      }} />
   );
 }
 
@@ -156,13 +175,19 @@ export default function EditorRow({ doc, index, duration, selected, selectedToke
    * touch release merges the range at once, a mouse release leaves it for Enter.
    */
   function beginRange(event: ReactPointerEvent<HTMLDivElement>) {
-    if (tokens.length < 2) return;
     if ((event.target as HTMLElement).closest(".lxe-chip-play")) return;
     const chip = (event.target as HTMLElement).closest<HTMLElement>("[data-lxe-token]");
     if (!chip) return;
     const at = Number(chip.dataset.lxeToken);
-    dragRange.current = { from: at, to: at, moved: false, reportedFrom: -1, reportedTo: -1 };
+    // The word is picked on the way down rather than on the click: this container captures the
+    // pointer for the range gesture, and a captured pointer makes the browser hand the following
+    // click to the capturing element — so a plain click on a chip never reached the chip's own
+    // handler, and selecting a single word did nothing. Selecting here also gives a finger its
+    // feedback at the moment it touches the word.
     suppressClick.current = false;
+    onSelect(index, at);
+    if (tokens.length < 2) return;
+    dragRange.current = { from: at, to: at, moved: false, reportedFrom: -1, reportedTo: -1 };
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* pointer is already gone */ }
   }
 
@@ -198,12 +223,13 @@ export default function EditorRow({ doc, index, duration, selected, selectedToke
   }
 
   return (
-    <article className={`lxe-row ${selected ? "is-selected" : ""}`} data-glass-edge="" data-lxe-row={index} onPointerDown={() => onSelect(index, selectedToken)}>
+    <article className={`lxe-row ${selected ? "is-selected" : ""}`} data-glass-edge="" data-lxe-row={index}
+      onPointerDown={(event) => { if ((event.target as HTMLElement).closest("[data-lxe-token]")) return; onSelect(index, selectedToken); }}>
       <header className="lxe-row-head">
         <span className="lxe-index">{index + 1}</span>
-        <TimeInput value={line.start} title="Line start (seconds)" onChange={(value) => onApply(setLineSpan(doc, index, { start: value }))} />
+        <TimeInput value={line.start} title="Line start — m:ss.mmm, or seconds" onChange={(value) => onApply(setLineSpan(doc, index, { start: value }))} />
         <span className="lxe-arrow">→</span>
-        <TimeInput value={line.end} title="Line end (seconds)" onChange={(value) => onApply(setLineSpan(doc, index, { end: value }))} />
+        <TimeInput value={line.end} title="Line end — m:ss.mmm, or seconds" onChange={(value) => onApply(setLineSpan(doc, index, { end: value }))} />
         {/* Icon only, between the sentence's times and its words: auditions just this span. */}
         <button type="button" className="icon-button" data-glass-edge="" disabled={!sentencePlayable}
           onClick={() => onPlayRange(sentenceStart as number, sentenceEnd as number)}
@@ -264,10 +290,11 @@ export default function EditorRow({ doc, index, duration, selected, selectedToke
         {tokens.length === 0 && <p className="lxe-words-hint">No words yet — Tokenize splits this sentence into them.</p>}
         {selectedTokenEntry && (
           <div className="lxe-token-edit">
-            <input className="lxe-token-text" data-glass-edge="" value={selectedTokenEntry.text} aria-label="Token text"
+            <span className="lxe-token-edit-label">Word <b>{selectedTokenEntry.text || "·"}</b></span>
+            <input className="lxe-token-text" data-glass-edge="" value={selectedTokenEntry.text} aria-label="Word text"
               onChange={(event) => onApply(setTokenText(doc, index, selectedToken, event.target.value), `tokentext:${index}:${selectedToken}`)} />
-            <TimeInput value={selectedTokenEntry.start} title="Word start (seconds)" onChange={(value) => onApply(setTokenSpan(doc, index, selectedToken, { start: value }))} />
-            <TimeInput value={selectedTokenEntry.end} title="Word end (seconds)" onChange={(value) => onApply(setTokenSpan(doc, index, selectedToken, { end: value }))} />
+            <TimeInput value={selectedTokenEntry.start} title="Word start — m:ss.mmm, or seconds" onChange={(value) => onApply(setTokenSpan(doc, index, selectedToken, { start: value }))} />
+            <TimeInput value={selectedTokenEntry.end} title="Word end — m:ss.mmm, or seconds" onChange={(value) => onApply(setTokenSpan(doc, index, selectedToken, { end: value }))} />
             <button type="button" className="small-action" disabled={typeof selectedTokenEntry.start !== "number"}
               onClick={() => onApply(setTokenSpan(doc, index, selectedToken, { end: playhead() }))} title="Stamp this word's end at the playhead">Stamp end</button>
             <button type="button" className="small-action is-danger" onClick={() => { onApply(deleteToken(doc, index, selectedToken)); onSelect(index, -1); }}>Delete word</button>

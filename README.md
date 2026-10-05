@@ -38,33 +38,62 @@ For production, use Docker:
 ./build.sh             # docker-compose build && docker-compose up -d
 ```
 
+The container serves **both https and http on the same port** (3000): the front door reads the
+first byte of each connection, so `https://192.168.1.156:3000` and `http://192.168.1.156:3000`
+answer alike and an older client that still says http keeps working. The first start generates a
+self-signed certificate into the data volume — `TLS_HOSTS` names the addresses it should cover,
+so set it to the one clients use (e.g. `TLS_HOSTS: 192.168.1.156`) — or mount your own pair with
+`TLS_CERT_FILE`/`TLS_KEY_FILE`, or set `TLS_DISABLE=1` to serve plain http only.
+
+On macOS, `build.sh` also trusts that generated certificate for the current user
+(`./scripts/trust-cert.sh`; `--system` covers every user and asks for an admin password), so
+Safari, Chrome and the desktop app open `https://192.168.1.156:3000` without a warning. Run the
+script again whenever the certificate is regenerated (a fresh data volume). Health checks can
+keep using `curl -k https://localhost:3000`, which also works on machines that have not run it.
+
 ## Desktop app (macOS)
 
 The same interface packages as a `.app`: an Electron shell (`desktop/`) around the static export
 of the UI. The app is a pure client — it bundles no server and no data; accounts and media are
-fetched from the API server named in Settings → Server.
+fetched from the API server the app was packaged against. No client has a Settings → Server
+card: a browser page talks to its own origin, and the app's address is fixed at packaging time.
 
 ```bash
 npm install
-npm run package:mac    # builds the static export and assembles dist/onlineMusic.app
+npm run package:mac    # builds dist/onlineMusic.app, pointed at https://192.168.1.156:3000
+npm run package:mac -- --server=http://192.168.1.156:3000  # plain-http build — no persistent login
 ```
+
+`--server` must be a full `http://` or `https://` URL and is baked into the shell: preload.js
+carries the address, tls.js the certificate policy. Without it the app falls back to
+`http://localhost:3000`.
+
+An https build accepts the packaged host's certificate even when it is self-signed — Caddy's
+`tls internal` on a LAN needs no root CA on the Mac — while every other host keeps Chromium's own
+verification, and a revoked certificate is refused even for that host (see `desktop/tls.js`).
+Once the certificate is trusted on the Mac (above), Chromium's own verification succeeds and the
+exemption is just the fallback for machines that have not installed it.
 
 The shell serves the UI from a privileged `app://bundle` scheme, so its origin is stable and the
 server can allowlist it. For the app to reach the server:
 
 1. Allow the app's origin on the server (uncomment in `docker-compose.yml`):
    `ALLOWED_ORIGINS: app://bundle`
-2. Point the app at the server in **Settings → Server** (empty means the local
-   `http://localhost:3000`, where cookies work because localhost is a trustworthy origin).
+2. Serve the API over https when the app should stay signed in — the Docker container already
+   terminates TLS on its own port, so package the app against that same `https://` address.
+   Cross-origin sessions are `SameSite=None; Secure`, and a plain-http API on a LAN IP cannot
+   store such a cookie (only `localhost` is exempt), so an http build browses but forgets the
+   login.
 
 Any other client can be hosted the same way: `npm run build:client` produces the static export
 in `out/`, and the server answers whichever origins `ALLOWED_ORIGINS` lists (comma-separated,
 credentials included). A client on a *different machine* needs the API behind HTTPS — the
-commented `proxy` service in `docker-compose.yml` puts Caddy in front (`tls internal` self-signs
-for LAN use; see `Caddyfile`) — because cross-origin session cookies are `SameSite=None; Secure`,
-and browsers only store Secure cookies over https (localhost excepted).
+web container terminates its own TLS, and the commented `proxy` service adds Caddy when a
+publicly trusted certificate is wanted (see `Caddyfile`) — because cross-origin session cookies
+are `SameSite=None; Secure`, and browsers only store Secure cookies over https (localhost
+excepted).
 
-The UI itself is unchanged between the browser and the desktop app.
+The UI itself is the same in both shells.
 
 ## Where data lives
 

@@ -1,4 +1,7 @@
 # The HTTPS edge in front of the API (see the commented `proxy` service in docker-compose.yml).
+# The web container already terminates its own TLS on 3000, so this is only for a publicly
+# trusted certificate on a real domain — and then set `TLS_DISABLE: "1"` on the web service, so
+# TLS is terminated once, here.
 #
 # Replace the host below with this machine's address — a domain, or its LAN IP for home use:
 #   https://192.168.1.10 {

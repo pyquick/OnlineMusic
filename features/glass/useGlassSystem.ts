@@ -17,6 +17,14 @@ import { DEFAULT_GLASS_SETTINGS, glassStoredFields, readGlassSettings, type Glas
  */
 const GLASS_REFRESH_EVENT = "glass-refresh";
 
+/** How long a colour change takes to cross the glass, in ms. The stylesheet interpolates the tint
+    channels over the same span — it reads `--tint-duration`, which the style object below
+    publishes — so the veil, the rims and the sampler all ride one clock. */
+const TINT_TRANSITION_MS = 600;
+/** While that runs, how often the scene is re-read: quick enough that the type glides with the
+    colour, slow enough that the sampler's own work stays far below the frame rate. */
+const TINT_SAMPLE_MS = 80;
+
 export type GlassSystem = {
   settings: GlassSettings;
   /** Patch one or more dials; the engines and the shell's custom properties follow immediately. */
@@ -47,6 +55,15 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
   const update = useCallback((patch: Partial<GlassSettings>) => {
     setSettings((current) => ({ ...current, ...patch }));
   }, []);
+
+  // The colour transition is armed only after the first paint: a tint restored from the settings
+  // blob would otherwise glide in from the neutral default every time the studio loads.
+  useEffect(() => {
+    const element = shell.current;
+    if (!element) return;
+    const frame = requestAnimationFrame(() => element.setAttribute("data-tint-live", ""));
+    return () => cancelAnimationFrame(frame);
+  }, [shell]);
 
   // Restore before first paint, so the page's write effect cannot clobber a stored blob with
   // defaults. `ready` is set even when the blob is unusable: the page gates its persistence on
@@ -124,6 +141,25 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
     touchScene();
   }, [appearance]);
 
+  // A tint change is a transition, not a jump: the stylesheet interpolates the channel variables
+  // while the band — which samples those variables from each pane's computed style only when it
+  // is asked to draw — would otherwise keep the colour the change began with. So the engines are
+  // carried through the whole trip, and the sampler is nudged along the way, or the type would
+  // still be reading the old colour when the glass had already arrived.
+  const shownTint = useRef(appearance.tint);
+  useEffect(() => {
+    if (shownTint.current === appearance.tint) return;
+    shownTint.current = appearance.tint;
+    const start = performance.now();
+    let sampled = start;
+    let frame = requestAnimationFrame(function chase(now) {
+      if (now - sampled >= TINT_SAMPLE_MS) { sampled = now; touchScene(); }
+      webglRef.current?.refresh();
+      if (now - start < TINT_TRANSITION_MS) frame = requestAnimationFrame(chase);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [appearance.tint]);
+
   // A pane whose box moved without a DOM signal (the pill's bubble, mid-spring) tells the rims so
   // they redraw at the new box on the next frame instead of at the next settle tick. Only the
   // WebGL path has a band to redraw; the SVG map follows its own geometry.
@@ -141,6 +177,7 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
     "--glass-clarity": String(clarity / 100),
     "--glass-band": `${refraction}px`,
     "--glass-pull": String(edge),
+    "--tint-duration": `${TINT_TRANSITION_MS}ms`,
   } as CSSProperties), [radius, blur, clarity, refraction, edge]);
 
   const stored = useMemo(() => glassStoredFields(settings), [settings]);
