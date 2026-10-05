@@ -356,9 +356,6 @@ export function startInkSampler(root: HTMLElement): () => void {
     const tiles: Tile[] = [];
     for (const element of media) {
       if (pane.contains(element)) continue;
-      // Another pane's glass surface is a canvas, and an empty one reads as black — a pane
-      // overlapping one would darken itself over nothing at all.
-      if (element instanceof HTMLCanvasElement && element.classList.contains("glass-surface")) continue;
       // The overlay paints itself opaque over the page, so its panes never show the media behind
       // it — and the page's panes never show the overlay's.
       if (element.closest(VIDEO_LAYER) !== layer) continue;
@@ -438,9 +435,9 @@ export function startInkSampler(root: HTMLElement): () => void {
 
   /**
    * Writes a pane's dispersion gain: the measured brightness of what the pane covers, lifted onto
-   * the floor, dead-banded like everything else. Both engines read it straight off the inline
-   * style — the SVG one on its own poll, the WebGL one per frame — so it is written even when the
-   * auto-shade is off, which is a setting about the tint, not about the prism.
+   * the floor, dead-banded like everything else. The rim map reads it straight off the inline
+   * style on its own poll, so it is written even when the auto-shade is off, which is a setting
+   * about the tint, not about the prism.
    */
   function wearGlow(pane: HTMLElement, luma: number): void {
     const glow = GLOW_FLOOR + (1 - GLOW_FLOOR) * Math.min(1, Math.max(0, luma));

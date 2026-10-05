@@ -54,9 +54,7 @@
    keeps the ring the keyboard asked for. */
 :is(.player-button,.now-play,.lxe-transport .primary-button,.parameter-card .primary-button):focus-visible{outline:none}
 /* The page's backdrop lives on its own fixed element rather than on the shell, so it holds still
-   while the page scrolls over it, and it is a real element rather than a ::before because the
-   WebGL path walks the element tree into its raster — a backdrop painted any other way would be
-   missing behind every rim band. Layer one is the optional scrim over a photo, layer two the
+   while the page scrolls over it. Layer one is the optional scrim over a photo, layer two the
    chosen colour, gradient or image. --shell-luma is that backdrop's measured brightness, and the
    two page inks ride it so a dark background does not leave dark type sitting on it — the same
    move lib/inkSampler.ts makes per pane. */
@@ -320,8 +318,8 @@
   --glass-alpha:var(--material-veil-regular);
   /* The tint is written as three bare channels rather than a colour, and the auto-shade is a
      scalar the ink sampler sets per pane from the brightness behind it. Two reasons for the
-     arithmetic instead of color-mix(): lib/inkSampler.ts and lib/glassWebgl.ts both read this
-     declaration back with an rgb()/rgba() regex, and a color-mix() computed value serialises as
+     arithmetic instead of color-mix(): lib/inkSampler.ts reads this declaration back with an
+     rgb()/rgba() regex, and a color-mix() computed value serialises as
      color(srgb …) — which would silently read as fully opaque; and scaling all three channels by
      one factor is exactly "the same hue, darker", which is what a dark backdrop asks for. With
      the default tint (255 255 255) and no shade this is byte-identical to white. */
@@ -363,30 +361,6 @@
 /* The bar is a 67px strip: half its height is where the two rims meet, so its shade narrows to
    stay an edge rather than a wash over the whole strip. */
 .glass-rim-fallback .glass-bar{--glass-rim-reach:min(var(--glass-band,0px),20px)}
-/* Where the rim is bent in WebGL (lib/glassWebgl.ts — Safari, and Chromium from a development
-   build with ?glasswebgl=1) the shader paints the rim band over the pane's own surface, and the
-   bevel — an inset shadow, which paints under any child — would be buried by it. It moves to a
-   pseudo-element instead: the same six insets, in the same place on screen, sitting above the
-   canvas and below the pane's content. Everything deeper than the band stays the pane's own
-   live backdrop-filter, so the frost is never a still image. */
-.glass-webgl [data-glass-edge]{
-  /* A transparent shadow in the bevel's slot keeps every drop-shadow rule that appends it valid. */
-  --glass-bevel:0 0 #0000}
-.glass-webgl [data-glass-edge]::before{
-  content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.75),
-    inset 1px 0 0 rgba(255,255,255,.32),
-    inset 0 -1px 0 rgba(52,58,101,.11),
-    inset -1px 0 0 rgba(52,58,101,.05),
-    inset 0 -28px 36px -32px rgba(52,58,101,.55)}
-/* Under the bevel, over the pane's own paint: every pane is a fixed or z-indexed box, so its
-   stacking context is already there for the surface to paint in. The surface is engine-owned
-   geometry and must never take part in the pane's own layout — a feature rule like
-   `.glass-button>*{position:relative}` (equal specificity, later in the sheet) would otherwise
-   reflow it as a grid item, shoving the icon out of the button. So the selector is scoped past
-   anything a component rule can reach. */
-.glass-webgl [data-glass-edge]>.glass-surface{position:absolute;inset:0;z-index:-2;display:block;width:100%;height:100%;border-radius:inherit;pointer-events:none}
 /* The level: dense. Surfaces over content or dark video stay harder to see through, so their text
    keeps its contrast. `[data-glass-edge]` is the same set the two rim engines select — the pane is
    the unit of glass in this studio, and the attribute is what says so. */
@@ -673,8 +647,8 @@
    A tint used to land in a single frame. Registered as animatable numbers, the three channels can
    be interpolated, so the veil the stylesheet paints from them, the rims that bend the same
    colours, and the ink the sampler measures against them all cross over together. The duration is
-   published by the glass system (`--tint-duration`, features/glass) because it chases the same
-   clock to keep the WebGL band in step; the transition arms only after the first paint, or a
+   published by the glass system (`--tint-duration`, features/glass) because the rim map samples
+   the same variables on the same clock; the transition arms only after the first paint, or a
    stored tint would glide in from neutral on every load. */
 @property --glass-tint-r{syntax:"<number>";inherits:true;initial-value:255}
 @property --glass-tint-g{syntax:"<number>";inherits:true;initial-value:255}

@@ -26,14 +26,14 @@ describe("readGlassSettings", () => {
     assert.equal(settings.radius, DEFAULT_GLASS_SETTINGS.radius);
     assert.equal(settings.refraction, DEFAULT_GLASS_SETTINGS.refraction);
     assert.deepEqual(settings.groups, {});
-    assert.equal(settings.webgl, false);
   });
 
-  test("the WebGL switch is strictly boolean", () => {
-    assert.equal(readGlassSettings({ glassWebgl: true }).webgl, true);
-    for (const stray of [1, 0, "true", {}, []]) {
-      assert.equal(readGlassSettings({ glassWebgl: stray }).webgl, false);
-    }
+  test("a blob from a build with the WebGL switch keeps every other dial", () => {
+    const settings = readGlassSettings({ glassBlur: 14, glassWebgl: true, glassEdge: 21, glassGroups: { pane: { band: 40, pull: 16 } } });
+    assert.equal(settings.blur, 14);
+    assert.equal(settings.edge, 21);
+    assert.deepEqual(settings.groups, { pane: { band: 40, pull: 16 } });
+    assert.equal("webgl" in settings, false);
   });
 
   test("every dial is clamped to its slider's range", () => {
@@ -82,12 +82,12 @@ describe("glassStoredFields", () => {
   test("writes the historical field names, in the stored order", () => {
     const fields = glassStoredFields(DEFAULT_GLASS_SETTINGS);
     assert.deepEqual(Object.keys(fields), [
-      "glassBlur", "glassRadius", "glassClarity", "glassEdge", "glassBandPx", "glassDispersion", "glassGroups", "glassWebgl",
+      "glassBlur", "glassRadius", "glassClarity", "glassEdge", "glassBandPx", "glassDispersion", "glassGroups",
     ]);
   });
 
   test("what was written reads back as the same dials", () => {
-    const settings = readGlassSettings({ glassBlur: 7.4, glassRadius: 120, glassClarity: 44, glassEdge: 21, glassBandPx: 63, glassDispersion: 12, glassGroups: { pane: { band: 40, pull: 16 } }, glassWebgl: true });
+    const settings = readGlassSettings({ glassBlur: 7.4, glassRadius: 120, glassClarity: 44, glassEdge: 21, glassBandPx: 63, glassDispersion: 12, glassGroups: { pane: { band: 40, pull: 16 } } });
     assert.deepEqual(readGlassSettings(glassStoredFields(settings)), settings);
   });
 });

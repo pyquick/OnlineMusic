@@ -1273,8 +1273,9 @@ export default function Home() {
 
   return (
     <div ref={shellRef} className="studio-shell" data-bg={appearance.bgKind} data-theme={appearance.shellLuma < 0.5 ? "dark" : "light"} data-bubble={bubbleRaised ? "" : undefined} style={{ ...appearanceStyle, ...glass.style }}>
-      {/* The backdrop: fixed, so it holds still under a scrolling page, and a real element, so the
-          WebGL raster carries it. Everything else paints above it by document order. */}
+      {/* The backdrop: fixed, so it holds still under a scrolling page, and a real element rather
+          than a ::before, so every pane has something to blur. Everything else paints above it by
+          document order. */}
       <div className="shell-bg" data-raster-fill aria-hidden="true" />
       {/* Colour behind the panes: a frosted surface only reads as glass when there is something behind it to blur. */}
       <div className="ambient" aria-hidden="true"><span className="ambient-orb orb-a" /><span className="ambient-orb orb-b" /></div>

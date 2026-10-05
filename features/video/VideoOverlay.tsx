@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
+import { useEffect, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import { FileVideo, Music2, SkipBack, SkipForward, Sparkles, Volume2, X } from "@/design-system/components/icons";
 import { PauseGlyph, PlayGlyph } from "@/design-system/components/TransportGlyphs";
 import { formatTime } from "@/shared/utilities/time";
@@ -56,6 +56,27 @@ export default function VideoOverlay({
   /** The phone's name card, which the round video icon opens above the dock. */
   const [nameOpen, setNameOpen] = useState(false);
 
+  /**
+   * The length, asked of the element itself rather than trusted from one event.
+   *
+   * A file can report `NaN` or `Infinity` at `loadedmetadata` — a fragmented MP4, or a stream whose
+   * header has no duration — and then learn the truth a moment later; the browser also revises it
+   * as it buffers. So every event that can carry the number is read, and only a finite, positive
+   * one is passed on: the dock would otherwise keep the first `0` it was handed, and the bar would
+   * read `0:00` under a video already playing at 1:24.
+   */
+  useEffect(() => {
+    const video = media.current;
+    if (!video) return;
+    const report = () => {
+      const value = video.duration;
+      if (Number.isFinite(value) && value > 0) onDuration(value);
+    };
+    report();
+    for (const event of ["loadedmetadata", "durationchange", "progress", "canplay", "playing"]) video.addEventListener(event, report);
+    return () => { for (const event of ["loadedmetadata", "durationchange", "progress", "canplay", "playing"]) video.removeEventListener(event, report); };
+  }, [media, onDuration, item.url]);
+
   function hideDock() {
     if (hideTimer) window.clearTimeout(hideTimer);
     setHideTimer(null);
@@ -98,6 +119,15 @@ export default function VideoOverlay({
     video.currentTime = Math.max(0, Math.min(Number.isFinite(video.duration) ? video.duration : Infinity, video.currentTime + seconds));
   }
 
+  /**
+   * The length the row draws with: the studio's reading when it has one, else the element's own.
+   * The element is the source of truth and it can learn the number late (see the effect above), so
+   * a stale `0` in the studio's state can never leave the seek bar with nothing to travel and the
+   * clock reading `0:00` under a video that is already playing.
+   */
+  const elementDuration = media.current && Number.isFinite(media.current.duration) && media.current.duration > 0 ? media.current.duration : 0;
+  const total = Number.isFinite(duration) && duration > 0 ? duration : elementDuration;
+
   return (
     <div
       className={`video-overlay ${controlsVisible ? "video-controls-visible" : ""}`}
@@ -114,7 +144,7 @@ export default function VideoOverlay({
     >
       <video ref={media} src={item.url} autoPlay playsInline
         onPlay={() => onPlayingChange(true)} onPause={() => onPlayingChange(false)}
-        onLoadedMetadata={(event) => onDuration(event.currentTarget.duration)}
+        onLoadedMetadata={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) onDuration(value); }}
         onTimeUpdate={(event) => onProgress(event.currentTarget.currentTime)} />
       <div className="video-shell-sidebar">
         <aside className="sidebar" data-glass-edge="" data-glass-scene="moving-media">
@@ -160,10 +190,10 @@ export default function VideoOverlay({
             <button className="icon-button" onClick={() => seekBy(10)} aria-label="Forward 10 seconds"><SkipForward size={24} /></button>
             <div className="progress-wrap">
               <span>{formatTime(progress)}</span>
-              <input type="range" min="0" max={duration || 1} step="0.1" value={progress}
-                style={{ "--seek": `${duration ? (progress / duration) * 100 : 0}%` } as CSSProperties}
+              <input type="range" min="0" max={total || 1} step="0.1" value={progress}
+                style={{ "--seek": `${total ? Math.min(100, (progress / total) * 100) : 0}%` } as CSSProperties}
                 onChange={(event) => { const value = Number(event.target.value); const video = media.current; if (video) video.currentTime = value; onProgress(value); }} aria-label="Seek" />
-              <span>{formatTime(duration)}</span>
+              <span>{formatTime(total)}</span>
             </div>
           </div>
           <div className="player-actions">

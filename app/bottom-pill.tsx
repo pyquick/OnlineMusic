@@ -28,8 +28,6 @@ const SPRING_STIFFNESS = 150;
 const SPRING_DAMPING = 22;
 /** Below this much travel and this much speed the spring is spent and the capsule simply arrives. */
 const SPRING_REST = 0.15;
-/** How far the capsule must move before the WebGL rim is told about its new box. */
-const MOVE_EPSILON = 0.5;
 /**
  * The liquid trip, for a change of item that did not come from a drag: the capsule swells into the
  * clear glass, crosses, and contracts onto its destination — grow, hold, shrink. Seconds from
@@ -81,23 +79,14 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange }: 
   const bubbleRef = useRef<HTMLSpanElement>(null);
 
   /**
-   * Tells the glass rims that the capsule's box moved silently. The event name is the whole
-   * contract — the glass system listens on the document and redraws the rims at the new box
-   * without re-rasterising; no handle or import crosses between this component and the effect.
-   */
-  function notifyGlass() {
-    bubbleRef.current?.dispatchEvent(new CustomEvent("glass-refresh", { bubbles: true }));
-  }
-  /**
    * The capsule's own motion. `x` is where it is drawn and `target` where the gesture says it
    * should be; the space between them is crossed by a spring, so no press can ever teleport the
    * glass — it is taken hold of where it already is and carried with weight. `travel` holds the
    * start of a liquid trip while one is running (0 when none is), which `paint` turns into the
    * swelling that carries the glass across. The frame loop reads only refs and never state, so a
-   * render happening mid-flight cannot make it stale. `notified` remembers the last position the
-   * WebGL rim was told about.
+   * render happening mid-flight cannot make it stale.
    */
-  const spring = useRef({ x: 0, target: 0, v: 0, raf: 0, last: 0, notified: 0, travel: 0 });
+  const spring = useRef({ x: 0, target: 0, v: 0, raf: 0, last: 0, travel: 0 });
   /** A phone does not change its mind mid-session about wanting motion. */
   const reduceMotion = useRef(false);
   /** True while the change of item was a drag settling rather than a click, so the liquid trip is
@@ -149,10 +138,6 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange }: 
     element.style.setProperty("--bubble-swell", swell.toFixed(4));
     element.style.setProperty("--bubble-sx", (1 + stretch).toFixed(4));
     element.style.setProperty("--bubble-sy", (1 - stretch * 0.5).toFixed(4));
-    if (Math.abs(state.x - state.notified) >= MOVE_EPSILON) {
-      state.notified = state.x;
-      notifyGlass();
-    }
   }
 
   /** Lifts the capsule into its liquid trip. The swell is timed here and drawn by `paint` on each
@@ -235,9 +220,6 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange }: 
     capture(state.pointer, true);
     setBubble((current) => ({ ...current, index: state.index, raised: true, dragging: true }));
     onRaiseChange?.(true);
-    // The bubble has just changed both its size and its material; a rim drawn from the old ones
-    // would not match the pane it belongs to.
-    notifyGlass();
   }
 
   /**
@@ -274,8 +256,6 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange }: 
       // stops the spring — puts the glass down.
       travelling: instant ? false : current.travelling,
     }));
-    // Settling back also restores the resting material, so the rim is told about that too.
-    notifyGlass();
   }
 
   // The capsule rests on the current item whenever no gesture is in flight: a pointer merely over
@@ -350,7 +330,6 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange }: 
       glide();
       setBubble((current) => ({ ...current, index: state.index, width: box.width, raised: false, dragging: false }));
     }
-    notifyGlass();
   }
 
   /**
