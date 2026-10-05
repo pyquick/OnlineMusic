@@ -19,18 +19,20 @@
  * and the waveform are inlined from the SF Symbols exports through `Glyph` below. Everything
  * else stays hand-drawn — those symbols have no export here.
  */
-import { useLayoutEffect, useState, type SVGProps } from "react";
+import { useLayoutEffect, useRef, useState, type MutableRefObject, type SVGProps } from "react";
 import { PauseGlyph, PlayGlyph } from "./TransportGlyphs";
 
 export type IconProps = SVGProps<SVGSVGElement> & { size?: number };
 
 function Icon({ size = 24, children, ...rest }: IconProps) {
+  const [ref, view] = useCentredView("0 0 24 24");
   return (
     <svg
+      ref={ref}
       xmlns="http://www.w3.org/2000/svg"
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox={view}
       fill="none"
       stroke="currentColor"
       strokeWidth={1.8}
@@ -51,12 +53,14 @@ function Icon({ size = 24, children, ...rest }: IconProps) {
  * own props still override everything.
  */
 function Glyph({ frame, size = 24, children, ...rest }: IconProps & { frame: string }) {
+  const [ref, view] = useCentredView(frame);
   return (
     <svg
+      ref={ref}
       xmlns="http://www.w3.org/2000/svg"
       width={size}
       height={size}
-      viewBox={frame}
+      viewBox={view}
       fill="currentColor"
       aria-hidden="true"
       {...rest}
@@ -64,6 +68,61 @@ function Glyph({ frame, size = 24, children, ...rest }: IconProps & { frame: str
       {children}
     </svg>
   );
+}
+
+/**
+ * The viewBox a glyph draws through: the frame it was authored in, squared, and then moved so the
+ * shapes' own box is the viewBox's centre — measured once, before the first paint is shown.
+ *
+ * The artboard is not the glyph. The SF speech bubble's ink sits half a pixel below its frame's
+ * centre, and the drawn list is a little left of its own; that is what reads as "the icon is off
+ * centre" on a round tile, and no amount of centring the *box* can answer it. The scale is kept
+ * (the squared frame's side), so a symbol keeps its drawn size and only its placement is corrected.
+ */
+function useCentredView(frame: string): [MutableRefObject<SVGSVGElement | null>, string] {
+  const ref = useRef<SVGSVGElement | null>(null);
+  const [view, setView] = useState(() => squareFrame(frame));
+  useLayoutEffect(() => {
+    const svg = ref.current;
+    if (!svg) return;
+    try {
+      const ink = svg.getBBox();
+      if (ink && ink.width > 0 && ink.height > 0) setView(centredFrame(frame, ink));
+    } catch {
+      /* No layout yet (a hidden pane): the squared frame already centres the artboard. */
+    }
+  }, [frame]);
+  return [ref, view];
+}
+
+/**
+ * The export's frame, squared around its own centre.
+ *
+ * An SF export arrives on Apple's artboard, which is often a hair taller or wider than it is
+ * square (the speech bubble is 27.87 by 27.28, the speaker 28.05 by 21.94). Fitting a non-square
+ * viewBox into the square box the caller asks for is the engine's job through
+ * `preserveAspectRatio`, and that is exactly where a glyph ends up a fraction off centre: the
+ * fitted content is not on the pixel grid the tile is. Squaring the frame leaves the glyph where
+ * the designer drew it — the added margin is split evenly — and makes the mapping a plain
+ * scale, so what is centred by the layout is centred on the screen, in every engine.
+ */
+function squareFrame(frame: string): string {
+  const [x, y, width, height] = frame.trim().split(/[\s,]+/).map(Number);
+  if (![x, y, width, height].every(Number.isFinite)) return frame;
+  const side = Math.max(width, height);
+  return `${x - (side - width) / 2} ${y - (side - height) / 2} ${side} ${side}`;
+}
+
+/** The same frame again, moved so the ink's own centre is the viewBox's centre, at the same
+    scale: the symbol keeps its drawn size and only its placement is corrected. */
+function centredFrame(frame: string, ink: { x: number; y: number; width: number; height: number }): string {
+  const [x, y, width, height] = frame.trim().split(/[\s,]+/).map(Number);
+  if (![x, y, width, height].every(Number.isFinite)) return frame;
+  const side = Math.max(width, height);
+  const centreX = ink.x + ink.width / 2;
+  const centreY = ink.y + ink.height / 2;
+  const round = (value: number) => Math.round(value * 1000) / 1000;
+  return `${round(centreX - side / 2)} ${round(centreY - side / 2)} ${side} ${side}`;
 }
 
 /**

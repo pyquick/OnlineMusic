@@ -214,12 +214,16 @@
 .video-overlay>video::-webkit-media-controls{display:none!important}
 /* Video playback reuses the homepage player dock; no custom edge panels. */
 /* The dock only ever lives inside the hit zone, which positions it; what it brings is its own box. */
-.video-player-dock{width:min(920px,calc(100% - 32px));min-height:67px;accent-color:var(--accent);display:grid;grid-template-columns:1.1fr 1.6fr 1.1fr;align-items:center;gap:20px;padding:10px 16px;border:1px solid rgba(255,255,255,.16);border-radius:calc(var(--radius-pane-bar) * var(--glass-radius,1));box-shadow:0 14px 35px #34406a25;animation:float-in .25s ease}.video-player-dock .player-controls{display:flex;align-items:center;gap:8px}.video-player-dock .player-actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;color:#888fa0}.video-player-dock .player-actions input{width:70px}
+.video-player-dock{width:min(920px,calc(100% - 32px));min-height:67px;accent-color:var(--accent);display:grid;grid-template-columns:1.1fr 1.6fr 1.1fr;align-items:center;gap:20px;padding:10px 16px;border:1px solid rgba(255,255,255,.16);border-radius:calc(var(--radius-pane-bar) * var(--glass-radius,1));box-shadow:0 14px 35px #34406a25;animation:float-in .25s ease}.video-player-dock>*{min-width:0}.video-player-dock .player-controls{display:flex;align-items:center;gap:8px}.video-player-dock .player-actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;color:#888fa0}.video-player-dock .player-actions input{width:70px}
 /* The dock's transport is the player bar's transport in another frame: the same solid glyphs at
    the same sizes, the same ink ramp off the pane's measured scene, the same shared seek bar. */
 .video-player-dock :is(.player-button,.icon-button){color:color-mix(in srgb,#fff var(--ink-mix,0%),#000)}/* Narrow windows keep the Close button — the dock is the only way out of the overlay — and drop
    the volume instead, which the hardware keys own on anything this size anyway. */
-@media(max-width:900px){.video-player-dock{grid-template-columns:1fr 1.5fr}.video-player-dock .player-actions>svg,.video-player-dock .player-actions>input{display:none}}
+@media(max-width:900px){.video-player-dock{grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) auto}.video-player-dock .player-actions>svg,.video-player-dock .player-actions>input{display:none}
+  /* The Close degrades with the room it has: the word goes first, leaving the round X the phone
+     uses. The label is the button's aria-label, so nothing loses its name. */
+  .video-player-dock .queue-button{width:36px;height:36px;padding:0;border-radius:50%;display:grid;place-items:center}
+  .video-player-dock .queue-button span{display:none}}
 /* Video uses the exact homepage sidebar component styles without changing the base design. */
 .video-shell-sidebar{position:absolute;z-index:8;left:0;top:0;bottom:0;width:18px;overflow:visible;pointer-events:auto}.video-shell-sidebar .sidebar{position:absolute;left:18px;top:18px;bottom:18px;width:244px;pointer-events:auto;transform:translateX(calc(-100% - 24px));transition:transform .3s ease}.video-shell-sidebar:hover .sidebar{transform:translateX(0)}.video-shell-sidebar .sidebar-bottom{margin-top:auto}.video-shell-sidebar .nav-item{font-size:var(--text-lg);padding:12px 14px}.video-shell-sidebar .brand{font-size:21px;padding:0 14px 42px}.video-shell-sidebar .brand-mark{width:29px;height:29px}.video-shell-sidebar .eyebrow{font-size:var(--text-xs)}.video-shell-sidebar .profile{padding:19px 11px 0}.video-shell-sidebar .avatar{width:31px;height:31px}.video-shell-sidebar .profile strong{font-size:var(--text-md)}.video-shell-sidebar .profile small{font-size:var(--text-xs)}
 /* Edge trigger only: keep the reused homepage sidebar hidden until the pointer touches the left edge. */
@@ -445,7 +449,11 @@
    `--glass-group` off the pane at creation. Panels carry none — an absent name follows the two
    global sliders. */
 :is(.asset-card,.project-card,.album-card,.album-detail,.empty-assets,.editor-panel,.metadata-panel,.empty-editor,.project-menu,.settings-card,.parameter-card,.parameter-wave-card,.metadata-float,.auth-modal,.upload-modal,.dropzone){--glass-group:card}
-.glass-button{width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:calc(var(--radius-pane-chip) * var(--glass-radius,1));color:var(--chip-ink);background:var(--chip);border:1px solid var(--chip-line);box-shadow:0 6px 16px rgba(52,58,101,.14),inset 0 1px 0 rgba(255,255,255,.7),inset 0 -1px 0 rgba(52,58,101,.1);-webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%));transition:transform .18s ease,color .2s ease,background .2s ease,box-shadow .2s ease;--glass-group:tile}
+/* An icon-only tile centres its glyph on the tile's own box: the padding a button arrives with
+   (1px 6px from the UA) and its line box are both dropped, and the icon is a block — so the grid
+   centres the glyph itself, with nothing between the two that could hold it a fraction off. */
+.glass-button{width:34px;height:34px;flex:none;display:grid;place-items:center;padding:0;line-height:0;border-radius:calc(var(--radius-pane-chip) * var(--glass-radius,1));color:var(--chip-ink);background:var(--chip);border:1px solid var(--chip-line);box-shadow:0 6px 16px rgba(52,58,101,.14),inset 0 1px 0 rgba(255,255,255,.7),inset 0 -1px 0 rgba(52,58,101,.1);-webkit-backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate));backdrop-filter:blur(var(--material-blur-chip)) saturate(var(--material-saturate)) var(--glass-edge-filter,saturate(100%));transition:transform .18s ease,color .2s ease,background .2s ease,box-shadow .2s ease;--glass-group:tile}
+:is(.glass-button,.mini-cover)>svg{display:block}
 
 .glass-button,.now-volume{position:relative;overflow:hidden}.glass-button::after,.now-volume::after{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;opacity:.45;pointer-events:none;background:linear-gradient(90deg,rgba(255,255,255,1),rgba(255,255,255,.2) 68%,rgba(255,255,255,.04));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude}.glass-button>* ,.now-volume>*{position:relative;z-index:1}
 .glass-button.is-active{color:#fff;border-color:rgba(255,255,255,.5);background:linear-gradient(135deg,rgba(255,143,147,.92),rgba(229,72,77,.92));box-shadow:0 8px 20px rgba(229,72,77,.42),inset 0 1px 0 rgba(255,255,255,.45)}
@@ -545,7 +553,11 @@
    glass. The unselected items are deliberately not listed here: since 2026-10-02 they inherit the
    pill's own ink — a flip of the scene between pure black and pure white (styles/shell.css). */
 .pill-item.is-current{color:color-mix(in srgb,#ffb3b6 var(--ink-mix,0%),#d6404a)}
-:is(.nav-item.active,.nav-item:hover)[data-ink],:is(.nav-item.active,.nav-item:hover) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{--ink-base:#d6404a;--ink-top:#ffb3b6;color:color-mix(in srgb,#fff var(--ink-solid,0%),color-mix(in srgb,#000 var(--ink-pale,0%),color-mix(in srgb,var(--ink-top) var(--ink-mix,0%),var(--ink-base))))}
+/* The hovered (and current) item paints a pill of its own, and that pill is the surface its words
+   are read on — not the scene behind the pane. So it takes the ink cut for that fill and none of
+   the scene's ramp: the ramp would hand a dark frame the light pink, and pink on the pale wash is
+   no text at all. Every other run on the pane keeps following what is behind it. */
+:is(.nav-item.active,.nav-item:hover)[data-ink],:is(.nav-item.active,.nav-item:hover) :is(span,strong,small,b,em,i,p,a,time,label)[data-ink]{color:var(--accent-ink)}
 
 /* Panels opened from the bar: the same glass as the rail and the bar. */
 .glass-panel{position:fixed;z-index:var(--z-panel);display:flex;flex-direction:column;padding:16px 18px;border-radius:calc(var(--radius-pane-sheet) * var(--glass-radius,1));overflow:hidden;animation:panel-in .3s var(--ease-glass) both}
@@ -627,21 +639,21 @@
 .thumb-fallback small{font-size:var(--text-xs);line-height:1.5;opacity:.9}
 
 /* Transport: each toggle mounts a fresh svg, so the icon pops over without any state of its own. */
-/* Pressing play is the one moment worth a slow animation: the glyph swells and a ring leaves it,
-   while the icon swap keeps its own quick pop underneath. Only descendants animate — an opacity
-   on the button itself would make it a backdrop root and put out the frost behind it. */
+/* Pressing play is the one moment worth a slow animation: the glyph swells, while the icon swap
+   keeps its own quick pop underneath. Only descendants animate — an opacity on the button itself
+   would make it a backdrop root and put out the frost behind it. The ring that used to leave the
+   glyph is gone: with the transport worked from the space bar it fired on every start, and a dark
+   circle drawn around the button reads as a box, not as an answer. */
 @keyframes play-swell{0%{scale:1}26%{scale:1.18}100%{scale:1}}
-@keyframes play-ripple{from{scale:.55;opacity:.5}to{scale:1.75;opacity:0}}
 .player-button,.now-play{position:relative}
 .player-button.is-starting svg,.now-play.is-starting svg{animation:play-swell .9s var(--ease-glass)}
-.player-button.is-starting::after,.now-play.is-starting::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:2px solid currentColor;pointer-events:none;animation:play-ripple .9s var(--ease-glass)}
 @keyframes player-pop{from{transform:scale(.6);opacity:.45}60%{transform:scale(1.14)}to{transform:scale(1);opacity:1}}
 .player-button svg{animation:player-pop .32s var(--ease-glass)}
 
 @media(max-width:900px){.player.glass-bar{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) auto}.player.glass-bar .player-actions{display:flex}}
 @media(max-width:680px){.player.glass-bar{grid-template-columns:minmax(0,1fr) auto}.player.glass-bar .player-actions{display:flex}.lyrics-panel{bottom:92px}.projects-panel{right:10px;bottom:92px;width:calc(100vw - 20px)}}
 @media(max-width:680px){.settings-page-head{flex-direction:column;align-items:stretch}.settings-card{padding:18px}}
-@media(prefers-reduced-motion:reduce){.ambient-orb,.glass-bar,.glass-bar.audio-playing::after,.glass-bar .mini-cover.is-playing::after,.lyrics-body p,.glass-panel,.settings-page,.player-button svg,.player-button.is-starting::after,.now-play.is-starting::after,.now-view,.now-sheet-hint{animation:none!important}}
+@media(prefers-reduced-motion:reduce){.ambient-orb,.glass-bar,.glass-bar.audio-playing::after,.glass-bar .mini-cover.is-playing::after,.lyrics-body p,.glass-panel,.settings-page,.player-button svg,.now-view,.now-sheet-hint{animation:none!important}}
 
 /* The empty editor doubles as the library picker: each row selects that asset for editing, so a
    library full of media never needs an import just to open something. */
