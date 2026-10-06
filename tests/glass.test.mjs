@@ -36,13 +36,6 @@ describe("readGlassSettings", () => {
     assert.equal("webgl" in settings, false);
   });
 
-  test("the WebGPU switch is strictly boolean", () => {
-    assert.equal(readGlassSettings({ glassWebgpu: true }).webgpu, true);
-    assert.equal(readGlassSettings({ glassWebgpu: false }).webgpu, false);
-    for (const stray of [1, 0, "true", {}, []]) {
-      assert.equal(readGlassSettings({ glassWebgpu: stray }).webgpu, false);
-    }
-  });
 
   test("every dial is clamped to its slider's range", () => {
     const high = readGlassSettings({ glassBlur: 100, glassRadius: 999, glassClarity: 150, glassEdge: 999, glassBandPx: 999, glassDispersion: 150 });
@@ -90,12 +83,12 @@ describe("glassStoredFields", () => {
   test("writes the historical field names, in the stored order", () => {
     const fields = glassStoredFields(DEFAULT_GLASS_SETTINGS);
     assert.deepEqual(Object.keys(fields), [
-      "glassBlur", "glassRadius", "glassClarity", "glassEdge", "glassBandPx", "glassDispersion", "glassGroups", "glassWebgpu",
+      "glassBlur", "glassRadius", "glassClarity", "glassEdge", "glassBandPx", "glassDispersion", "glassGroups",
     ]);
   });
 
   test("what was written reads back as the same dials", () => {
-    const settings = readGlassSettings({ glassBlur: 7.4, glassRadius: 120, glassClarity: 44, glassEdge: 21, glassBandPx: 63, glassDispersion: 12, glassGroups: { pane: { band: 40, pull: 16 } }, glassWebgpu: true });
+    const settings = readGlassSettings({ glassBlur: 7.4, glassRadius: 120, glassClarity: 44, glassEdge: 21, glassBandPx: 63, glassDispersion: 12, glassGroups: { pane: { band: 40, pull: 16 } } });
     assert.deepEqual(readGlassSettings(glassStoredFields(settings)), settings);
   });
 });

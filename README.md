@@ -132,7 +132,6 @@ lib/
 ├── asset-validation.ts# input validation
 ├── embedded-tags.ts   # embedded tag and cover parsing
 ├── glassEdge.ts       # glass edge refraction (SVG displacement filter)
-├── glassWebgpu.ts     # the same refraction in a WGSL shader (Safari, or the WebGPU switch)
 └── inkSampler.ts      # samples the backdrop to derive the text ink colour
 styles/
 ├── shared.css         # shared tokens and primitives

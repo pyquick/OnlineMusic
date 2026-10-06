@@ -54,13 +54,6 @@ export type GlassSettings = {
   dispersion: number;
   /** Per-family overrides; a family absent here follows the studio's own values. */
   groups: GlassGroupValues;
-  /**
-   * Bend the rims in WebGPU as well as in the SVG map. Off by default: the map needs no device,
-   * no capture and no clone of the page, and it is what Chromium already paints. Safari ignores
-   * the switch and always runs WebGPU, because its backdrop-filter cannot bend a backdrop at all
-   * — and WebGPU is on by default there, so the glass has a renderer either way.
-   */
-  webgpu: boolean;
 };
 
 export const DEFAULT_GLASS_SETTINGS: GlassSettings = {
@@ -71,7 +64,6 @@ export const DEFAULT_GLASS_SETTINGS: GlassSettings = {
   refraction: DEFAULT_GLASS_REFRACTION,
   dispersion: DEFAULT_GLASS_DISPERSION,
   groups: {},
-  webgpu: false,
 };
 
 /** The known families, so a stored blob cannot invent one; each value is clamped like the sliders. */
@@ -119,7 +111,6 @@ export function readGlassSettings(data: unknown): GlassSettings {
     dispersion: Math.round(Math.max(0, Math.min(100, number(record.glassDispersion, DEFAULT_GLASS_SETTINGS.dispersion)))),
     groups: readStoredGroups(record.glassGroups),
     // Strict on purpose: a stray truthy value in a hand-edited blob must not switch renderers.
-    webgpu: record.glassWebgpu === true,
   };
 }
 
@@ -138,7 +129,6 @@ export function glassStoredFields(settings: GlassSettings) {
     glassDispersion: settings.dispersion,
     glassGroups: settings.groups,
     // Appended after the historical names: an older blob simply omits it and reads back as false.
-    glassWebgpu: settings.webgpu,
   };
 }
 
