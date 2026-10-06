@@ -28,7 +28,7 @@ const SPRING_STIFFNESS = 150;
 const SPRING_DAMPING = 22;
 /** Below this much travel and this much speed the spring is spent and the capsule simply arrives. */
 const SPRING_REST = 0.15;
-/** How far the capsule must move before the WebGPU rim is told about its new box. */
+/** How far the capsule must move before its visual position is considered settled. */
 const MOVE_EPSILON = 0.5;
 /**
  * The liquid trip, for a change of item that did not come from a drag: the capsule swells into the
