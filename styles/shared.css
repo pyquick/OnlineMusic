@@ -398,7 +398,10 @@
    shader worked out for it. The pane's bevel, on its own ::before, shares that layer and is painted
    under the band where the two meet — the band stands in for the veil there, and the rim reads its
    shade one layer down instead. */
-.glass-webgpu [data-glass-edge]>.glass-surface{position:absolute;inset:0;z-index:-1;display:block;width:100%;height:100%;border-radius:inherit;pointer-events:none}
+.glass-webgpu [data-glass-edge]>.glass-surface{position:absolute;inset:0;z-index:0;display:block;width:100%;height:100%;border-radius:inherit;pointer-events:none}
+/* Explicit paint stack: the WebGPU rim is above the pane veil, while every real label/icon/control stays above the rim. This avoids browser-dependent negative-z stacking contexts that made short panes look fully opaque. */
+.glass-webgpu [data-glass-edge]>*:not(.glass-surface){position:relative;z-index:1}
+
 /* The level: dense. Surfaces over content or dark video stay harder to see through, so their text
    keeps its contrast. `[data-glass-edge]` is the same set the two rim engines select — the pane is
    the unit of glass in this studio, and the attribute is what says so. */
