@@ -101,7 +101,7 @@ const MAX_BAND_SHARE = 0.5;
 // The user lifted that (2026-10-01, "让它们(所有控件)的折射最高均能到84PX"): the strength slider
 // reaches 84px on every control, and the only ceiling left is the band itself — the bend reads to
 // the band's inner edge and no further, which is the geometry of the map, not a policy.
-const MAX_PULL_SHARE = 1;
+export const MAX_PULL_SHARE = 1;
 /**
  * And the share for a *boosted* pane — one that already reads the sliders at a multiple
  * (`data-glass-edge` above 1, which only the player bar sets). Such a pane is exactly the short

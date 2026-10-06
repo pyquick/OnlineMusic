@@ -39,12 +39,10 @@
  * device, no capture and no clone of the page.
  */
 
-import { MAX_BAND_PX, MAX_DISPERSION, MAX_EDGE_OFFSET, type GlassGroup, type GlassGroupValues } from "./glassEdge";
+import { MAX_BAND_PX, MAX_DISPERSION, MAX_EDGE_OFFSET, MAX_PULL_SHARE, type GlassGroup, type GlassGroupValues } from "./glassEdge";
 
 /** The band's own cap: the two rims of a short pane must not meet in its middle. */
 const MAX_BAND_SHARE = 0.5;
-/** Deepest share of the band a rim sample may travel — the fold bound the tall panes keep. */
-const MAX_PULL_SHARE = 0.3;
 /** The player bar reads the sliders at 3× and pulls 2.5× deeper; see glassEdge.ts for why. */
 const BOOSTED_PULL_SHARE = MAX_PULL_SHARE * 2.5;
 /** Air on one side, and the glass the panes are pretending to be on the other. */
@@ -136,8 +134,15 @@ type Pane = {
   /** The bind group this pane draws with, and the frost texture it was built for. */
   bindGroup: GPUBindGroup | null;
   bindKey: string;
-  /** This pane's own uniform block: 80 bytes, rewritten every frame it is drawn. */
+  /** This pane's own uniform block: 96 bytes, rewritten every frame it is drawn. */
   uniformBuffer: GPUBuffer | null;
+  /**
+   * The band and pull this pane last drew with, in CSS px. The capture needs them to know how far
+   * into the pane its own rim can read: a sample travels `pull` px inward from anywhere in the
+   * band, so the pane's own content has to stay out of the raster over `band + pull`.
+   */
+  bandCss: number;
+  pullCss: number;
   /** `data-glass-edge` as a number: how much harder this pane reads both sliders. */
   boost: number;
   /** The family whose base band/pull this pane follows, or null for the global sliders. */
@@ -163,11 +168,16 @@ type Pane = {
 /* ── the shader ─────────────────────────────────────────────────────────────────────────── */
 
 /**
- * The pane's uniforms, in the order WGSL wants them: a vec3 aligns to 16, so the tint is padded
- * on both sides, and the whole block is 80 bytes — one buffer per pane, written once per frame.
- * The TypeScript side fills a Float32Array with these same offsets (see `writePaneUniforms`).
+ * The pane's uniforms, in the order WGSL wants them: a vec3 aligns to 16, so the tint sits at
+ * byte 80 with four floats of padding in front of it and one behind, and the block is 96 bytes —
+ * one buffer per pane, written once per frame. 96, not the 80 the fields before the tint add up
+ * to: a uniform binding is validated against the *whole* struct, and one byte short is not a
+ * smaller uniform block but an invalid bind group — the write is dropped, `setBindGroup` faults,
+ * and every pane silently draws nothing at all, which is exactly what the band did: the glass
+ * stayed its own flat backdrop-filter with no bend in it anywhere. The TypeScript side fills a
+ * `Float32Array(24)` with these same offsets.
  */
-const PANE_UNIFORM_SIZE = 80;
+const PANE_UNIFORM_SIZE = 96;
 
 const PANE_WGSL = `
 struct Pane {
@@ -308,7 +318,9 @@ struct Blur {
 
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var sourceSampler: sampler;
-@group(0) @binding(2) var target: texture_storage_2d<rgba8unorm, write>;
+/* Not "target": WGSL reserves the word, and a shader that will not build makes an *invalid*
+   compute pipeline — see the compile check below, which is what catches that. */
+@group(0) @binding(2) var dest: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(3) var<uniform> blur: Blur;
 
 const W = array<f32, 7>(0.214607, 0.205036, 0.177247, 0.138812, 0.098409, 0.062348, 0.035669);
@@ -316,7 +328,7 @@ const TEXELS = 7u;
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) id: vec3u) {
-  let dims = textureDimensions(target);
+  let dims = textureDimensions(dest);
   if (id.x >= dims.x || id.y >= dims.y) { return; }
   let uv = (vec2f(id.xy) + vec2f(.5)) / vec2f(dims);
   var sum = textureSampleLevel(source, sourceSampler, uv, 0.).rgb * W[0];
@@ -327,7 +339,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
           + textureSampleLevel(source, sourceSampler, uv - step, 0.).rgb) * W[i];
     total += W[i] * 2.;
   }
-  textureStore(target, vec2i(id.xy), vec4f(sum / total, 1.));
+  textureStore(dest, vec2i(id.xy), vec4f(sum / total, 1.));
 }
 `;
 
@@ -384,7 +396,7 @@ type Clone = { entity: HTMLElement; snapshots: Map<Element, Box>; holders: Map<E
  * pixel-correct, and the rest of the band (which only the sampling ever reaches, and only until
  * the next capture) carries the same backdrop rather than a flat hole.
  */
-function buildClone(root: HTMLElement, originY: number, bandHeight: number, skip: (element: Element) => boolean, muted: (element: Element) => boolean = () => false): Clone {
+function buildClone(root: HTMLElement, originY: number, bandHeight: number, skip: (element: Element) => boolean, muted: (element: Element) => boolean = () => false, inset: (element: Element) => number = () => 0): Clone {
   const snapshots = new Map<Element, Box>();
   const styles = new Map<Element, string>();
   // One read pass with no writes in between: nothing here forces a second style flush.
@@ -463,11 +475,20 @@ function buildClone(root: HTMLElement, originY: number, bandHeight: number, skip
       // A media element is swapped for an <img> by the caller; keep the box either way.
       if (name === "IMG" || name === "VIDEO" || name === "CANVAS") copy.setAttribute("data-media", name);
       let style = `${styles.get(node) ?? ""}position:absolute;left:${left}px;top:${top}px;width:${box.rect.width}px;height:${(fill ? bandHeight : box.rect.height)}px;`;
-      // A pane that has another pane inside it is kept in the raster — a bubble nested in a pill
-      // has nothing to bend otherwise, since the pill it sits on would be cut out of the scene —
-      // but only its children are wanted: its own veil, border and shadow are dropped so the
-      // nested glass reads what the host is showing rather than the host's own paint.
+      // A pane contributes its *content* to the raster and nothing else. The glass itself — the
+      // veil, the hairline, the shadow, the frost — is paint the page would not have if the pane
+      // were absent, and a raster that carried it would be sampled through the pane's own veil:
+      // milkier, and twice as thick as the same pane in Chromium. What must stay is what is
+      // inside the pane, because the panes that overlap it sample exactly that.
       if (muted(node)) style += "background:transparent!important;background-image:none!important;box-shadow:none!important;border-color:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;";
+      // Its *own* rim, though, may not read it. A band's samples travel `pull` px inward from
+      // anywhere in the band, so a pane's content is kept out of the raster over `band + pull`:
+      // what is left in that ring is the page behind the pane, which is exactly what Chromium's
+      // backdrop-filter shows there. Deeper in, the content stays, because the panes that overlap
+      // the pane sample it. Without this the rim carries a ghost of its own labels — a bar's
+      // title and its tiles arriving a second time, displaced, under the real ones.
+      const rim = inset(node);
+      if (rim > 0) style += `clip-path:inset(${rim.toFixed(2)}px);`;
       // The backdrop's own background is laid out against the screen, not the element: pinned to
       // the size it has on screen and offset so its top edge sits where the viewport's top edge
       // is, then repeated to fill the rest of the band.
@@ -587,6 +608,18 @@ export function attachGlassWebgpu(
   /** The per-family base band/pull the page last handed in; empty = everything follows the sliders. */
   let groups: GlassGroupValues = {};
   let surface: Raster | null = null;
+  /**
+   * Which raster the panes' cached bind groups were built for. A pane holds its bind group until
+   * something in the key changes, and the key used to be the blur radius plus the raster's *size*
+   * — both of which are the *same* after the next capture, because every capture of the same page
+   * has the same dimensions. So from the second capture on, every pane drew with a bind group
+   * still pointing at the frost texture of the raster that had just been destroyed: a submit that
+   * references a destroyed texture is rejected whole, and the band stopped painting altogether —
+   * silently, since the error only ever reached the device's own `uncapturederror` event. A
+   * capture is a new generation and the key carries its number, so a stale group can never outlive
+   * its texture.
+   */
+  let surfaceGeneration = 0;
   /** The document rectangle the raster covers, and how many device px it has per CSS px. */
   let rasterLeft = 0;
   let rasterTop = 0;
@@ -650,6 +683,7 @@ export function attachGlassWebgpu(
       const scratch = makeTexture(raster.width, raster.height, GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
       dropSurface();
       surface = { texture, scratch, frost: null, frostKey: "", width: raster.width, height: raster.height };
+      surfaceGeneration += 1;
       return true;
     } catch {
       return false;
@@ -786,6 +820,8 @@ export function attachGlassWebgpu(
         pullCap: cap("--glass-pull-cap"),
         x: 0, y: 0, width: 0, height: 0,
         radius: Math.max(0, outer - border),
+        bandCss: 0,
+        pullCss: 0,
         ...paneMaterial(element),
       });
       sizes.observe(element);
@@ -841,7 +877,7 @@ export function attachGlassWebgpu(
     // The blur lives in the raster's texels, which are CSS px wide whatever the screen is.
     const frosted = frost(Math.max(0, parameters.blur) * rasterScale);
     if (!frosted) return;
-    const bindKey = `${raster.frostKey}|${raster.width}x${raster.height}`;
+    const bindKey = `${surfaceGeneration}|${raster.frostKey}|${raster.width}x${raster.height}`;
     const encoder = gpuDevice.createCommandEncoder();
 
     panes.forEach((pane) => {
@@ -868,6 +904,9 @@ export function attachGlassWebgpu(
       const share = scale > 1 ? BOOSTED_PULL_SHARE : MAX_PULL_SHARE;
       const basePull = (pane.group && groups[pane.group]?.pull) ?? Math.max(0, parameters.offset);
       const pull = Math.min(basePull * scale * dpr, band * share, pane.pullCap > 0 ? pane.pullCap * dpr : Infinity);
+      // What the capture needs, in the CSS px the clone is built in.
+      pane.bandCss = band / dpr;
+      pane.pullCss = pull / dpr;
 
       // The pane's own uniforms. The tint is read from the channel variables the stylesheet
       // paints with and darkened by the shade the ink sampler measured, exactly as the GL path
@@ -996,15 +1035,27 @@ export function attachGlassWebgpu(
     // dropped is the pane itself, not just its surface: the raster has to be the page *behind*
     // the glass, and a clone that carried the pane's own tint would be sampled through the
     // pane's own veil, milkier and twice as thick as the same pane in Chromium.
-    // A pane with another pane inside it stays in the raster (its paint dropped, its contents
-    // kept): that nesting is the whole reason a bubble in the pill can bend anything at all.
-    const hosts = new Set<Element>();
-    surfaces.forEach((element) => {
-      if (element.querySelector("[data-glass-edge]")) hosts.add(element);
-    });
+    //
+    // Every pane is dropped, including one that holds another pane. Keeping a host's children so
+    // a nested bubble had something to bend was tried and is worse: the *host's own* rim then
+    // samples its own contents, so a bar's title and its controls come back a second time,
+    // displaced, under the real ones — the double exposure a rim is least allowed to show. What
+    // the nested panes lose instead is the host's own surface: their band reads the page behind
+    // the host rather than the host's veil, a difference the veil they sit under mostly hides.
+    /** How far into its own box a pane's rim can read, in CSS px. */
+    const rimReader = (element: Element) => {
+      const pane = panes.get(element as HTMLElement);
+      if (!pane) return 0;
+      // A pane the last frame did not draw has no measured band yet; the sliders are the best
+      // guess then, and the next capture (the one after the frame) has the real pair.
+      const band = pane.bandCss || parameters.band;
+      const pull = pane.pullCss || parameters.offset;
+      return Math.max(0, band + pull);
+    };
     const clone = buildClone(root, bandTop - scrollY, bandHeight,
-      (element) => (surfaces.has(element) && !hosts.has(element)) || (element instanceof HTMLCanvasElement && canvases.has(element)),
-      (element) => hosts.has(element));
+      (element) => element instanceof HTMLCanvasElement && canvases.has(element),
+      (element) => surfaces.has(element),
+      rimReader);
     const { entity, snapshots, holders } = clone;
 
     // Media becomes data URIs: a rasterised <img> with a relative src is a hole in Safari. Only
@@ -1233,6 +1284,15 @@ export function attachGlassWebgpu(
         primitive: { topology: "triangle-list" },
       });
       blurModule = device.createShaderModule({ code: BLUR_WGSL });
+      // Both modules are read before anything is built from them. The blur one had no check at
+      // all, and that is how a single reserved word — the storage texture was called `target` —
+      // turned the whole renderer into a silent no-op: nothing throws, the module simply makes an
+      // *invalid* pipeline, and an invalid pipeline poisons every command buffer it is recorded
+      // into, so the frame's submit is rejected whole and the band never paints a pixel. The blur
+      // rides in the same command buffer as every pane, which is why a fault here read as "the
+      // glass has no refraction at all" rather than as a missing frost.
+      const blurInfo = await blurModule.getCompilationInfo();
+      if (blurInfo.messages.some((message) => message.type === "error")) throw new Error("blur shader");
       blurPipeline = device.createComputePipeline({ layout: "auto", compute: { module: blurModule, entryPoint: "main" } });
       sampler = device.createSampler({ magFilter: "linear", minFilter: "linear", addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge" });
       blurHorizontal = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
