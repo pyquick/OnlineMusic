@@ -400,7 +400,7 @@ type Clone = { entity: HTMLElement; snapshots: Map<Element, Box>; holders: Map<E
  * pixel-correct, and the rest of the band (which only the sampling ever reaches, and only until
  * the next capture) carries the same backdrop rather than a flat hole.
  */
-function buildClone(root: HTMLElement, originY: number, bandHeight: number, skip: (element: Element) => boolean, muted: (element: Element) => boolean = () => false, inset: (element: Element) => number = () => 0): Clone {
+function buildClone(root: HTMLElement, originY: number, bandHeight: number, skip: (element: Element) => boolean, muted: (element: Element) => boolean = () => false): Clone {
   const snapshots = new Map<Element, Box>();
   const styles = new Map<Element, string>();
   // One read pass with no writes in between: nothing here forces a second style flush.
@@ -485,15 +485,6 @@ function buildClone(root: HTMLElement, originY: number, bandHeight: number, skip
       // milkier, and twice as thick as the same pane in Chromium. What must stay is what is
       // inside the pane, because the panes that overlap it sample exactly that.
       if (muted(node)) style += "background:transparent!important;background-image:none!important;box-shadow:none!important;border-color:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;";
-      // Its own rim may not read the pane's *content* either. The shader bounds a rim sample to
-      // the band it is drawn on, and the band runs from the edge inward — straight over the
-      // padding, where a bar's title, a card's heading or a chip's label sits. Left in, that
-      // content comes back a second time, displaced, under the real thing: the doubled title the
-      // WebGPU rim was showing. The clip takes it out of the raster over the reach a rim sample
-      // can travel; what is left in that ring is the page behind the pane, which is what the
-      // map-based renderer reads there too.
-      const rim = inset(node);
-      if (rim > 0) style += `clip-path:inset(${rim.toFixed(2)}px);`;
       // The backdrop's own background is laid out against the screen, not the element: pinned to
       // the size it has on screen and offset so its top edge sits where the viewport's top edge
       // is, then repeated to fill the rest of the band.
@@ -1046,20 +1037,10 @@ export function attachGlassWebgpu(
     // displaced, under the real ones — the double exposure a rim is least allowed to show. What
     // the nested panes lose instead is the host's own surface: their band reads the page behind
     // the host rather than the host's veil, a difference the veil they sit under mostly hides.
-    /** How far into its own box a pane's rim can read, in CSS px. */
-    const rimReader = (element: Element) => {
-      const pane = panes.get(element as HTMLElement);
-      if (!pane) return 0;
-      // A pane the last frame did not draw has no measured band yet; the sliders are the best
-      // guess then, and a capture after the first frame has the real pair.
-      const band = pane.bandCss || parameters.band;
-      const pull = pane.pullCss || parameters.offset;
-      return Math.max(0, band + pull);
-    };
     const clone = buildClone(root, bandTop - scrollY, bandHeight,
-      (element) => element instanceof HTMLCanvasElement && canvases.has(element),
-      (element) => surfaces.has(element),
-      rimReader);
+      (element) => element instanceof HTMLCanvasElement && canvases.has(element)
+        || surfaces.has(element),
+      (element) => surfaces.has(element));
     const { entity, snapshots, holders } = clone;
 
     // Media becomes data URIs: a rasterised <img> with a relative src is a hole in Safari. Only

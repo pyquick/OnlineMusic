@@ -172,8 +172,13 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
   // WebGPU path has a surface to redraw; the edge map follows its own geometry.
   useEffect(() => {
     const onRefresh = () => webgpuRef.current?.refresh();
+    const onAmbient = () => webgpuRef.current?.invalidate();
     document.addEventListener(GLASS_REFRESH_EVENT, onRefresh);
-    return () => document.removeEventListener(GLASS_REFRESH_EVENT, onRefresh);
+    document.addEventListener("glass-ambient-change", onAmbient);
+    return () => {
+      document.removeEventListener(GLASS_REFRESH_EVENT, onRefresh);
+      document.removeEventListener("glass-ambient-change", onAmbient);
+    };
   }, []);
 
   // What the shell publishes for the stylesheet and the rim map. The formats are the contract

@@ -43,6 +43,9 @@ export function startAmbientDrift(): () => void {
       orb.style.translate = `${(travel.x * t).toFixed(2)}px ${(travel.y * t).toFixed(2)}px`;
       orb.style.scale = (travel.from + (travel.to - travel.from) * t).toFixed(4);
     }
+    // WebGPU owns a cached page raster; tell it when the backdrop's fixed orbs move so its rim
+    // cannot keep sampling the previous second's position while CSS reads the live one.
+    document.dispatchEvent(new CustomEvent("glass-ambient-change"));
   };
 
   place(0);
