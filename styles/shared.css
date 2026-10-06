@@ -388,14 +388,16 @@
    can reach (a feature rule like `.glass-button>*{position:relative}`, equal specificity and later
    in the sheet, would otherwise reflow it as a grid item and shove the icon out of the button). */
 /* The band paints *under the pane's content*, at z-index -1 — a negative index still paints over
-   the pane's own background (an element's background comes before its negative-z children), so the
-   band hides the veil the pane lays down in that ring and stands in for it, while the labels,
-   titles and icons of the pane itself stay on top of it where they belong. Painting it above the
-   content instead — z-index 0 — puts the band over the pane's own text: the title of a bar came
-   back a second time, displaced, under the real one. The pane's own backdrop-filter does *not*
-   read it: a backdrop is what is painted behind the element, and a negative-z child is painted
-   after the element's own background, in front of that backdrop, which is why the band stays as
-   sharp as the frost the shader worked out for it. */
+   the pane's own background (a background comes before its negative-z children), so the band hides
+   the veil the pane lays down in that ring and stands in for it, while the labels, titles and icons
+   of the pane itself stay on top of it where they belong. Painting it above the content instead —
+   z-index 0 — puts the band over the pane's own text: the title of a bar came back a second time,
+   displaced, under the real one. The pane's own backdrop-filter does *not* read it: a backdrop is
+   what is painted behind the element, and a negative-z child is painted after the element's own
+   background, in front of that backdrop, which is why the band stays as sharp as the frost the
+   shader worked out for it. The pane's bevel, on its own ::before, shares that layer and is painted
+   under the band where the two meet — the band stands in for the veil there, and the rim reads its
+   shade one layer down instead. */
 .glass-webgpu [data-glass-edge]>.glass-surface{position:absolute;inset:0;z-index:-1;display:block;width:100%;height:100%;border-radius:inherit;pointer-events:none}
 /* The level: dense. Surfaces over content or dark video stay harder to see through, so their text
    keeps its contrast. `[data-glass-edge]` is the same set the two rim engines select — the pane is
