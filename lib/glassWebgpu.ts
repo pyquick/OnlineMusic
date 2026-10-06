@@ -136,11 +136,8 @@ type Pane = {
   bindKey: string;
   /** This pane's own uniform block: 96 bytes, rewritten every frame it is drawn. */
   uniformBuffer: GPUBuffer | null;
-  /**
-   * The band and pull this pane last drew with, in CSS px. The capture needs them to know how far
-   * into the pane its own rim can read: a sample travels `pull` px inward from anywhere in the
-   * band, so the pane's own content has to stay out of the raster over `band + pull`.
-   */
+  /** The band and pull this pane last drew with, in CSS px — what the capture needs to know how
+      far into the pane its own rim can read. */
   bandCss: number;
   pullCss: number;
   /** `data-glass-edge` as a number: how much harder this pane reads both sliders. */
@@ -269,7 +266,14 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
   // displacement, which is computed in this bottom-up space: minus y is down the raster. The
   // raster is its own resolution (a CSS px per texel, however dense the screen), so both the
   // pixel's position and the bend it carries are converted into raster pixels here.
-  let shift = vec2f(inward.x, -inward.y) * bend * pane.pull;
+  // The sample may travel inward, but never past the band's own inner edge: band - inside is how
+  // much glass is left between this pixel and the flat middle. Past that the mapping used to
+  // fold back on itself — the same backdrop sampled twice, from two depths at once — and the rim
+  // tore: a bar over a photograph came back as horizontal streaks rather than a bend. Clamping the
+  // reach keeps the mapping monotonic (the innermost pixels all read the band's inner edge, which
+  // is flat anyway), so the band can only ever show the ring it is drawn on.
+  let reach = min(bend * pane.pull, pane.band - inside);
+  let shift = vec2f(inward.x, -inward.y) * reach;
   // The pane-relative position in device px, converted to raster px, and only then moved into the
   // raster's own frame: rasterOrigin is already in raster px, and folding it into the same
   // multiply would scale it a second time — the sample would land elsewhere entirely and the rim
@@ -481,12 +485,13 @@ function buildClone(root: HTMLElement, originY: number, bandHeight: number, skip
       // milkier, and twice as thick as the same pane in Chromium. What must stay is what is
       // inside the pane, because the panes that overlap it sample exactly that.
       if (muted(node)) style += "background:transparent!important;background-image:none!important;box-shadow:none!important;border-color:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;";
-      // Its *own* rim, though, may not read it. A band's samples travel `pull` px inward from
-      // anywhere in the band, so a pane's content is kept out of the raster over `band + pull`:
-      // what is left in that ring is the page behind the pane, which is exactly what Chromium's
-      // backdrop-filter shows there. Deeper in, the content stays, because the panes that overlap
-      // the pane sample it. Without this the rim carries a ghost of its own labels — a bar's
-      // title and its tiles arriving a second time, displaced, under the real ones.
+      // Its own rim may not read the pane's *content* either. The shader bounds a rim sample to
+      // the band it is drawn on, and the band runs from the edge inward — straight over the
+      // padding, where a bar's title, a card's heading or a chip's label sits. Left in, that
+      // content comes back a second time, displaced, under the real thing: the doubled title the
+      // WebGPU rim was showing. The clip takes it out of the raster over the reach a rim sample
+      // can travel; what is left in that ring is the page behind the pane, which is what the
+      // map-based renderer reads there too.
       const rim = inset(node);
       if (rim > 0) style += `clip-path:inset(${rim.toFixed(2)}px);`;
       // The backdrop's own background is laid out against the screen, not the element: pinned to
@@ -901,11 +906,10 @@ export function attachGlassWebgpu(
       const baseBand = (pane.group && groups[pane.group]?.band) ?? parameters.band;
       const band = Math.min(baseBand * scale * dpr, Math.min(paneWidth, paneHeight) * MAX_BAND_SHARE, pane.bandCap > 0 ? pane.bandCap * dpr : Infinity);
       if (band < MIN_BAND) { clearOnly(); return; }
+      pane.bandCss = band / dpr;
       const share = scale > 1 ? BOOSTED_PULL_SHARE : MAX_PULL_SHARE;
       const basePull = (pane.group && groups[pane.group]?.pull) ?? Math.max(0, parameters.offset);
       const pull = Math.min(basePull * scale * dpr, band * share, pane.pullCap > 0 ? pane.pullCap * dpr : Infinity);
-      // What the capture needs, in the CSS px the clone is built in.
-      pane.bandCss = band / dpr;
       pane.pullCss = pull / dpr;
 
       // The pane's own uniforms. The tint is read from the channel variables the stylesheet
@@ -1047,7 +1051,7 @@ export function attachGlassWebgpu(
       const pane = panes.get(element as HTMLElement);
       if (!pane) return 0;
       // A pane the last frame did not draw has no measured band yet; the sliders are the best
-      // guess then, and the next capture (the one after the frame) has the real pair.
+      // guess then, and a capture after the first frame has the real pair.
       const band = pane.bandCss || parameters.band;
       const pull = pane.pullCss || parameters.offset;
       return Math.max(0, band + pull);
