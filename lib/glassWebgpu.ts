@@ -483,18 +483,69 @@ function buildClone(root: HTMLElement, originY: number, bandHeight: number, skip
   return { entity, snapshots, holders };
 }
 
-/** Converts one media element to a data URI; null when its pixels cannot be read. */
+/** A media element's own pixels: a video's frame, an image's file, a canvas' backing store. */
+function naturalSize(element: Element) {
+  if (element instanceof HTMLVideoElement) return { width: element.videoWidth, height: element.videoHeight };
+  if (element instanceof HTMLImageElement) return { width: element.naturalWidth, height: element.naturalHeight };
+  const canvas = element as HTMLCanvasElement;
+  return { width: canvas.width, height: canvas.height };
+}
+
+/** One `object-position` term: a share of the free space, a length from the start edge, or a
+    keyword — the same reading `background-position` gives the same grammar. */
+function positionTerm(raw: string, free: number) {
+  const value = raw.trim();
+  if (value.endsWith("%")) return (parseFloat(value) / 100) * free;
+  if (value === "top" || value === "left") return 0;
+  if (value === "bottom" || value === "right") return free;
+  const length = parseFloat(value);
+  return Number.isFinite(length) ? length : free / 2;
+}
+
+/**
+ * Converts one media element to a data URI of what the element actually *shows*; null when its
+ * pixels cannot be read.
+ *
+ * The copy is the element's own box, not its file: an `<img>` whose computed `object-fit` is
+ * `cover` — every cover in this studio, and the settings preview's photograph — shows a crop of
+ * its file, and `drawImage(element, 0, 0)` copies the *top-left corner* of that file instead. The
+ * raster then holds a different part of the picture than the screen does, and a rim sampling it
+ * refracts content that is not the backdrop at all: the band stops matching the pane it has to
+ * meet, which reads as a smudge rather than a bend. So the fit is applied here the way the browser
+ * applies it — cover, contain, none, scale-down and fill, with `object-position` placing the paint
+ * inside the box — and the canvas is the element's own box, so the clone holds exactly the pixels
+ * the element has on screen.
+ */
 function mediaToDataUri(element: Element) {
   try {
-    const width = element instanceof HTMLVideoElement ? element.videoWidth : element.clientWidth;
-    const height = element instanceof HTMLVideoElement ? element.videoHeight : element.clientHeight;
-    if (!width || !height) return null;
+    const natural = naturalSize(element);
+    const boxWidth = element.clientWidth;
+    const boxHeight = element.clientHeight;
+    if (!natural.width || !natural.height || !boxWidth || !boxHeight) return null;
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(width));
-    canvas.height = Math.max(1, Math.round(height));
+    canvas.width = Math.max(1, Math.round(boxWidth));
+    canvas.height = Math.max(1, Math.round(boxHeight));
     const context = canvas.getContext("2d");
     if (!context) return null;
-    context.drawImage(element as CanvasImageSource, 0, 0);
+    const style = getComputedStyle(element);
+    const fit = style.objectFit || "fill";
+    const contain = Math.min(boxWidth / natural.width, boxHeight / natural.height);
+    const scale = fit === "cover" ? Math.max(boxWidth / natural.width, boxHeight / natural.height)
+      : fit === "contain" ? contain
+        : fit === "none" ? 1
+          : fit === "scale-down" ? Math.min(1, contain)
+            : null;
+    // `fill` (and any keyword a future engine adds) is the one case with no fitting: the file is
+    // stretched to the box, which is exactly what the element paints.
+    const drawn = scale === null
+      ? { width: boxWidth, height: boxHeight }
+      : { width: natural.width * scale, height: natural.height * scale };
+    // A single `object-position` term sets the horizontal one and centres the other, the same rule
+    // `background-position` keeps.
+    const terms = (style.objectPosition || "50% 50%").split(" ");
+    const left = positionTerm(terms[0] ?? "50%", boxWidth - drawn.width);
+    const top = positionTerm(terms[1] ?? "50%", boxHeight - drawn.height);
+    context.drawImage(element as CanvasImageSource, left, top, drawn.width, drawn.height);
     return canvas.toDataURL("image/png");
   } catch {
     return null;
@@ -617,10 +668,14 @@ export function attachGlassWebgpu(
     if (target.frost && target.frostKey === key) return target.frost;
     const frosted = target.frost ?? makeTexture(target.width, target.height, GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
     target.frost = frosted;
-    // CSS `blur(r)` is a Gaussian with standard deviation r/2, and it is one pass; this is two,
-    // whose σ add in quadrature — so each carries r/(2√2) and the pair lands exactly on the CSS
-    // kernel. The taps are 3σ wide, giving σ/3 = r/(6√2) of spacing, in the raster's own texels.
-    const spacing = Math.max(0.35, blurPx / (6 * Math.SQRT2));
+    // CSS `blur(r)` is a Gaussian whose standard deviation *is* r (CSS filter effects), and this
+    // is two passes whose σ add in quadrature, so each pass must carry r/√2. The 13-tap kernel
+    // below is Gaussian to σ ≈ 2.824 taps (its second moment: 2·Σwᵢi² / Σwᵢ = 7.98), so one
+    // tap-step of σ is blurPx / (2.824·√2) = blurPx / 3.99 — hence the /4. The divisor used to be
+    // 6√2, which put the whole two-pass σ at 0.47·r: the band was frostier than CSS asked for at
+    // every radius, sharper than the pane's own interior it has to meet, and the seam between the
+    // two read as a band of its own along the rim.
+    const spacing = Math.max(0.35, blurPx / 4);
     const write = (buffer: GPUBuffer, direction: [number, number]) => {
       device!.queue.writeBuffer(buffer, 0, new Float32Array([1 / target.width, 1 / target.height, direction[0], direction[1], spacing, 0, 0, 0]));
     };
