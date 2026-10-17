@@ -222,6 +222,20 @@ fn saturateColor(color: vec3f, amount: f32) -> vec3f {
   return mix(vec3f(dot(color, vec3f(.213, .715, .072))), color, amount);
 }
 
+const TAU = 6.2831853;
+/** How much colour the rim's own sheen adds at full dispersion; the true split is subtler. */
+const CHROMA = .18;
+/**
+ * The prism's own light. Three phase-shifted cosines sum to grey, so the rim gains a spectrum
+ * without brightening, and the hue follows the surface normal with a small shift across the band,
+ * the direction a real prism fans its colours out. Without it true dispersion is invisible on a
+ * flat backdrop — white has no channels to separate, so the rim would only show white rings.
+ */
+fn spectrum(angle: f32, depth: f32) -> vec3f {
+  let h = angle / TAU + .5 + depth * .14;
+  return vec3f(cos(TAU * h), cos(TAU * (h - .33333)), cos(TAU * (h - .66667)));
+}
+
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4f {
   // Local space is the pane's own box with its origin at the bottom-left, y up — the same space
@@ -286,7 +300,13 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
   // The pane's own tint, already darkened by whatever shade the ink sampler measured behind it,
   // so the band and the flat middle it meets are painted with the same colour. The canvas is
   // premultiplied and this alpha is 1, so the band cannot pick up a grey wash of its own.
-  return vec4f(mix(color, pane.tint, pane.veil), 1.);
+  var surface = mix(color, pane.tint, pane.veil);
+  // The rim's own spectrum, on top of the material: strongest at the edge, gone by the band's
+  // inner seam, so the canvas keeps meeting the pane's live backdrop without a colour step.
+  surface += spectrum(atan2(inward.y, inward.x), inside / pane.band)
+    * (pane.dispersion * pane.glow * CHROMA * bend);
+  // Keep the sum inside the display range; a bright backdrop plus a full sheen can clip.
+  return vec4f(clamp(surface, vec3f(0.), vec3f(1.)), 1.);
 }
 `;
 
