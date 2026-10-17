@@ -1,9 +1,12 @@
 /* ── Lyrics: the words themselves ─────────────────────────────────────────────
    One renderer serves the fullscreen sheet, the phone's artwork slot and the editor's live
    preview, so what is timed in the editor is exactly what plays. The original is fixed at
-   24px/700 in every layout — hierarchy is brightness, never size: the live line is white and
-   fills token by token, lines that have played keep their finished look, lines still to come sit
-   dimmer. Nothing blurs, and the type never scales down on a narrow window; the layout gives way
+   24px/700 in every layout: the live line is white and fills token by token, lines that have
+   played keep their finished look, and unplayed lines recede a step at a time — each one further
+   ahead is fainter, softer and a touch smaller, so the column reads as depth rather than as a flat
+   list. The live line lifts its words one after another once the rail has arrived, breathes on a
+   slow sub-pixel swell, and carries a faint halo; a word held for more than two seconds blooms.
+   Only the focus moves — the type never scales down on a narrow window, the layout gives way
    instead.
 
    This file ships with the feature's own chunks (now-playing, the editor), so the studio's
@@ -14,15 +17,73 @@
 /* The rail's half-window padding is what lets the first and last line reach the middle; the sync
    hook writes it from the measured block height, and publishes the block as --lyr-block. */
 .lyr-rail{display:flex;flex-direction:column;justify-content:center;min-height:100%;gap:20px}
-.lyr-line{margin:0;color:rgba(255,255,255,.36);transition:color .3s var(--ease-glass)}
+/* Every line is told its distance from the reading as `--lyr-dist` (the renderer writes it inline).
+   Distance drives the whole depth of the column — how faint, how soft, how small, and how late each
+   line answers — so a new sentence moves the sheet as one gesture that starts at the focus and
+   travels outwards, line by line, instead of every line changing at once. `translate`/`scale` never
+   touch layout, so the centring maths (which reads offsetTop/offsetHeight) is unchanged. */
+.lyr-line{position:relative;z-index:0;margin:0;color:rgba(255,255,255,.36);
+  translate:0 0;scale:1;opacity:1;filter:blur(0px);
+  --lyr-delay:min(calc(var(--lyr-dist,0) * 45ms),135ms);
+  transition:color .3s var(--ease-glass),opacity .45s var(--ease-glass),filter .45s var(--ease-glass),scale .5s var(--ease-pop);
+  transition-delay:var(--lyr-delay)}
 .lyr-line.is-past{color:rgba(255,255,255,.74)}
-.lyr-line.is-active{color:#fff}
+/* Unplayed lines recede a step at a time: each line further from the reading is fainter and softer,
+   and the blur is what carries the depth — brightness alone reads as a flat list. The scale is far
+   too small to read as type changing size; it reads as the column gaining a little air. */
+.lyr-line.is-future{opacity:clamp(.38,calc(1 - var(--lyr-dist,0) * .13),1);
+  filter:blur(clamp(.3px,calc(var(--lyr-dist,0) * .4px),2.4px));
+  scale:clamp(.985,calc(1 - var(--lyr-dist,0) * .0035),1)}
+/* The live line is the still point: crisp, full, and breathing on a slow sub-pixel swell. */
+.lyr-line.is-active{color:#fff;animation:lyr-wave 7.5s ease-in-out infinite}
+@keyframes lyr-wave{0%,100%{translate:0 0}50%{translate:0 -.25px}}
+/* The arrival. A line does not simply become the focus, it takes its place: once the rail has
+   landed it comes in past its resting size, answers back under it, and settles. The overshoot is
+   written into the keyframes rather than left to an easing curve — an easing can only overshoot by
+   a fraction of the distance travelled, and the distance here (a fraction of a percent of scale)
+   was far too small for that to ever be seen. Scale is the channel that can carry a rebound, since
+   the whole vertical budget is half a pixel. */
+.lyr:not(.is-gliding) .lyr-line.is-active{animation:lyr-wave 7.5s ease-in-out infinite,lyr-settle .68s var(--ease-glass) both}
+@keyframes lyr-settle{0%{scale:1}38%{scale:1.022}64%{scale:.996}82%{scale:1.004}100%{scale:1}}
+/* The live line's words lift one after another — but only once the rail has arrived. The sheet
+   drops `.is-gliding` when the centre scroll lands, and that is the moment the wave is allowed to
+   run, so the raise belongs to the line the scroll actually reached rather than to the moment the
+   playhead named it. Each word starts a beat after the one before, which is what makes the line
+   read as a row of separate words. The overshoot is in the keyframes, so the settle never passes
+   the half-pixel ceiling the two motions share. */
+.lyr:not(.is-gliding) .lyr-line.is-active .lyr-token{
+  animation:lyr-word .78s var(--ease-glass) both;
+  animation-delay:calc(var(--lyr-word-i,0) * 26ms)}
+@keyframes lyr-word{0%{translate:0 0}42%{translate:0 -.25px}64%{translate:0 -.1px}82%{translate:0 -.17px}100%{translate:0 0}}
+/* The focus carries a faint halo: a wide, soft wash laid behind the live line and faded in with
+   it. Loud enough to gather the eye on the line being sung, quiet enough that it never reads as a
+   glow of its own — the words stay the brightest thing in the frame. The aligned layouts put the
+   wash where their words are: the desk's sheet and the editor's preview are left-aligned, the
+   phone's window is centred. */
+.lyr-line::before{content:"";position:absolute;z-index:-1;left:-2%;right:-2%;top:-46%;bottom:-34%;pointer-events:none;
+  background:radial-gradient(62% 58% at 50% 50%,rgba(255,255,255,.12),rgba(255,255,255,.045) 46%,transparent 74%);
+  opacity:0;transition:opacity .45s var(--ease-glass)}
+/* The ellipse is sized so it is already transparent where the wash meets the sheet's edges — a
+   radius wide enough to reach them would be clipped into a visible rectangle, which is the one
+   thing a halo must never look like. */
+:is(.lyr--sheet,.lyr--preview) .lyr-line::before{background:radial-gradient(42% 58% at 38% 50%,rgba(255,255,255,.12),rgba(255,255,255,.045) 46%,transparent 74%)}
+.lyr-line.is-active::before{opacity:1}
 .lyr-orig{display:block;font-size:24px;font-weight:700;line-height:1.35;letter-spacing:-.012em}
-.lyr-token{--lyr-fill:0%}
+/* A word has to be transformable for the lift to reach it, and a plain inline box has no transform:
+   the tokens become inline-blocks. The gaps between them stay inline text, so spacing and wrapping
+   are unchanged. The transition is the channel the held-note glow arrives on. */
+.lyr-token{--lyr-fill:0%;display:inline-block;translate:0 0;transition:filter .4s var(--ease-glass)}
+/* A word that carries a time is a control: the hand promises that pressing it moves the playhead
+   there. Words with nothing set stay plain text, and so does the empty document's note. */
+.lyr [data-lyr-seek]{cursor:pointer}
 /* The karaoke fill: the live line's tokens are painted by a two-stop gradient clipped to the
    glyphs, so the sung part of a token is white and the rest stays dim — one span, one custom
    property, no duplicate text. Gaps are whitespace and keep the line's own colour. */
 .lyr-line.is-active .lyr-token{background-image:linear-gradient(90deg,#fff var(--lyr-fill),rgba(255,255,255,.42) var(--lyr-fill));-webkit-background-clip:text;background-clip:text;color:transparent}
+/* Only a held note blooms. A token whose own span runs longer than two seconds takes a soft light
+   while it is the word being sung — the synchroniser sets `.is-hold` on that one span — and every
+   other word stays plain, so the glow always means the same thing: the voice is holding this one. */
+.lyr-line.is-active .lyr-token.is-hold{filter:drop-shadow(0 0 5px rgba(255,255,255,.6)) drop-shadow(0 0 15px rgba(255,255,255,.3))}
 /* The translation is the auxiliary line: smaller, lighter, dimmer — plainly under the original
    and plainly secondary, and it scrolls with the line it belongs to. */
 .lyr-trans{display:block;margin-top:6px;font-size:17px;font-weight:500;line-height:1.5;opacity:.66}
@@ -33,6 +94,19 @@
    gesture). It stays a scroller — the sync hook centres the live line by scrolling this box, and
    lyrics that carry no timing must still be readable the whole way through. */
 .lyr--words{height:calc(var(--lyr-block,64px) * 3 + 40px);pointer-events:none}
+/* The window still never eats a gesture — a pull around the words is still the stage's — but a
+   timed word takes the pointer back, because a tap on it is a seek. The press bubbles on to the
+   stage either way, so the drag and the tap that closes the sheet keep working around it. */
+.lyr--words [data-lyr-seek]{pointer-events:auto}
+/* Reduced motion keeps the hierarchy, the depth and the halo — none of which move anything — and
+   drops the lift and the stagger, so a line changes brightness and focus without the column
+   stepping or the change rippling. */
+@media(prefers-reduced-motion:reduce){
+  .lyr-line{transition:color .3s var(--ease-glass);transition-delay:0s}
+  .lyr-line.is-active,
+  .lyr:not(.is-gliding) .lyr-line.is-active,
+  .lyr:not(.is-gliding) .lyr-line.is-active .lyr-token{animation:none}
+}
 
 /* ── The lyrics workspace ─────────────────────────────────────────────────────
    The editor is a page of its own in everything but the URL: full window, own header, own

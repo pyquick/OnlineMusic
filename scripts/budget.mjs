@@ -36,7 +36,11 @@ const LIMITS = {
   // its hit zone), a duplicated rail rule, its own veil — and the total still measured 18.12.
   // 2026-10-03: raised to 18.6. The server-address card's field (its class in the shared field
   // list plus the feature's own three rules) measured 18.4.
-  cssGz: 18_600,
+  // 2026-10-06: raised to 21.0. The full parameter editor brought its own stylesheet (the dials,
+  // the switches, the meter, the presets — 1.1 kB gz) and the waveform's canvas rules joined the
+  // shared chunk (0.4 kB gz); the old DOM-bar rules those replaced were deleted in the same pass,
+  // which put the measured total at 20.6.
+  cssGz: 21_000,
   largestChunkGz: 58_000, // the shared vendor chunk, measured 53.7 kB gz
 };
 

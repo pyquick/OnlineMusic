@@ -1,3 +1,5 @@
+import type { TrackParameters } from "@/shared/parameters";
+
 /**
  * The app's own shape for a piece of media, and the index line the server streams for one.
  *
@@ -26,4 +28,6 @@ export type IndexEntry = {
   id: string; name: string; mediaKind: MediaKind; format?: string; title?: string; artist?: string; album?: string;
   genre?: string; trackNo?: number; durationMs?: number; lyrics?: string; sizeBytes?: number; mimeType?: string;
   fileUrl?: string; coverUrl?: string; hasCover?: boolean;
+  /** The sound-shaping document saved with this track, when it has one. */
+  parameters?: TrackParameters;
 };

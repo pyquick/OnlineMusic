@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { sanitizeTrackParameters, type TrackParameters } from "@/shared/parameters";
 export const ASSET_STATUSES = ["draft","processing","ready","failed","archived"] as const;
 export type AssetStatus = (typeof ASSET_STATUSES)[number];
 export const MEDIA_KINDS = ["audio","video","image","project"] as const;
@@ -18,7 +19,7 @@ export const MAX_ASSETS=10000, MAX_NAME_LENGTH=200, MAX_DESCRIPTION_LENGTH=2000,
  * of truth once it exists, the text stays as the import-time fallback, and only the dedicated
  * `/lyrics` route writes the document — metadata PATCHes cannot reach it.
  */
-export interface AssetMetadata { title?:string; artist?:string; album?:string; genre?:string; description?:string; tags?:string[]; durationMs?:number; sizeBytes?:number; mimeType?:string; lyrics?:string; lyricsDoc?:string; [key:string]:unknown }
+export interface AssetMetadata { title?:string; artist?:string; album?:string; genre?:string; description?:string; tags?:string[]; durationMs?:number; sizeBytes?:number; mimeType?:string; lyrics?:string; lyricsDoc?:string; parameters?:TrackParameters; [key:string]:unknown }
 export interface Asset { id:string; ownerEmail:string; name:string; mediaKind:MediaKind; format:string; status:AssetStatus; metadata:AssetMetadata; filePath:string; hash?:string; createdAt:string; updatedAt:string }
 export interface CreateAssetInput { name:string; ownerEmail?:string; mediaKind?:MediaKind; format:string; status?:AssetStatus; metadata?:AssetMetadata; filePath?:string; hash?:string }
 export type UpdateAssetInput = Partial<Omit<CreateAssetInput,"name"|"ownerEmail"|"filePath">> & {name?:string};
@@ -34,6 +35,7 @@ export function listAssets(ownerEmail?:string){return load().assets.filter(a=>!o
 export function assetIndexEntry(a:Asset){const m=a.metadata??{};return {id:a.id,name:a.name,mediaKind:a.mediaKind,format:a.format,status:a.status,createdAt:a.createdAt,updatedAt:a.updatedAt,
   title:m.title,artist:m.artist,album:m.album,genre:m.genre,trackNo:m.trackNo,durationMs:m.durationMs,lyrics:m.lyrics,
   sizeBytes:typeof m.sizeBytes==="number"?m.sizeBytes:0,mimeType:m.mimeType,
+  parameters:m.parameters===undefined?undefined:sanitizeTrackParameters(m.parameters),
   fileUrl:`/api/assets/${a.id}/file`,coverUrl:m.coverData?`/api/assets/${a.id}/cover`:undefined,hasCover:Boolean(m.coverData)}}
 export function getAsset(id:string,ownerEmail?:string){return load().assets.find(a=>a.id===id&&(!ownerEmail||a.ownerEmail===ownerEmail))}
 export function createAsset(input:CreateAssetInput){const s=load(), now=new Date().toISOString(), a:Asset={id:crypto.randomUUID(),...input,ownerEmail:input.ownerEmail ?? "",filePath:input.filePath ?? "",mediaKind:input.mediaKind??"audio",status:input.status??"draft",metadata:input.metadata??{},createdAt:now,updatedAt:now};s.assets.push(a);save(s);return a}

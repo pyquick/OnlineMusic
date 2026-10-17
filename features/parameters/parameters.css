@@ -1,0 +1,55 @@
+/* The parameter editor's own furniture: the dial rows, the switches, the meter and the presets.
+   The screen, the cards and the waveform card come from styles/shared.css; this file only adds
+   what the professional controls need that nothing else in the studio uses. */
+
+.parameter-header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.parameter-status{margin:10px 0 0;color:var(--ink-soft,#8a90a2);font-size:var(--text-sm)}
+.parameter-status.is-dirty{color:#e5484d}
+.parameter-ab.is-on{background:var(--accent);color:#fff}
+
+.parameter-dial{display:block;margin-top:16px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-inner);background:var(--panel2)}
+.wave-control-grid .parameter-dial{margin-top:0}
+.parameter-dial.is-disabled{opacity:.5}
+.dial-head{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#858b9d;font-size:var(--text-sm)}
+.dial-value{display:inline-flex;align-items:baseline;gap:3px}
+.dial-number{width:64px;padding:2px 6px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--accent-ink);font:var(--text-sm) var(--font-mono);text-align:right;outline:none}
+.dial-number:hover{border-color:var(--line)}
+.dial-number:focus{border-color:#ffb0b3;background:var(--panel)}
+.dial-number:disabled{opacity:.6}
+.dial-value em{font-style:normal;color:#9a9fb0;font:var(--text-xs) var(--font-mono)}
+.dial-range{width:100%;margin-top:8px;accent-color:var(--accent)}
+
+.wave-control-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:16px}
+.wave-toggle-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:14px}
+
+.parameter-toggle{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--muted);font-size:var(--text-sm);transition:.2s}
+.parameter-toggle i{display:block;width:9px;height:9px;border-radius:50%;background:#c6c9d6}
+.parameter-toggle.is-on{color:var(--accent-ink);background:var(--accent-soft);border-color:transparent}
+.parameter-toggle.is-on i{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.parameter-toggle:disabled{opacity:.5}
+
+.parameter-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.parameter-card .primary-button{margin-top:22px}
+.parameter-meter{margin-top:20px}
+.meter-rail{position:relative;height:9px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);overflow:hidden}
+.meter-rms{position:absolute;top:0;bottom:0;left:0;background:rgba(66,199,155,.55)}
+.meter-peak{position:absolute;top:0;bottom:0;left:0;background:linear-gradient(90deg,#42c79b,#f2a33c 72%,#e5484d);opacity:.8}
+.meter-foot{display:flex;justify-content:space-between;margin-top:7px;color:#9a9fb0;font:var(--text-xs) var(--font-mono)}
+.clip{letter-spacing:.08em}
+.clip.is-hot{color:#e5484d;text-shadow:0 0 8px rgba(229,72,77,.5)}
+
+.parameter-presets{grid-column:1 / -1}
+.parameter-hint{margin:12px 0 0;color:var(--ink-soft,#8a90a2);font-size:var(--text-sm)}
+.preset-row{display:flex;flex-wrap:wrap;gap:9px;margin-top:16px}
+.preset-button{padding:9px 15px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--accent-ink);font-size:var(--text-sm);transition:.2s}
+.preset-button:hover{background:var(--accent-soft);border-color:transparent}
+.parameter-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:18px}
+.parameter-actions .save-button{width:auto;margin-top:0;padding:10px 18px}
+.parameter-actions .save-button:disabled{opacity:.6}
+.parameter-actions .small-action{display:inline-flex;align-items:center;gap:6px}
+.parameter-shortcuts{margin:16px 0 0;color:#9a9fb0;font:var(--text-xs) var(--font-mono)}
+
+@media(max-width:680px){
+  .parameter-presets{grid-column:auto}
+  .wave-control-grid{grid-template-columns:1fr 1fr}
+}

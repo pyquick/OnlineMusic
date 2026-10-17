@@ -191,7 +191,7 @@ export default function NowPlayingView({
    * a scroll intent and a sideways swipe never fight, and the pointer is only captured once an axis
    * is committed — capturing on the way down would swallow the progress slider's own drag.
    */
-  const gesture = useRef<{ pointer: number; x: number; y: number; axis: "x" | "y" | null; onArt: boolean; onWords: boolean; from: number; scroll: number; time: number } | null>(null);
+  const gesture = useRef<{ pointer: number; x: number; y: number; axis: "x" | "y" | null; onArt: boolean; onWords: boolean; seek: boolean; from: number; scroll: number; time: number } | null>(null);
   /** The words' own window, which the stage's vertical drag scrolls when the finger is on it. */
   const wordsRef = useRef<HTMLDivElement>(null);
 
@@ -200,7 +200,7 @@ export default function NowPlayingView({
     const target = event.target as HTMLElement;
     if (target.closest("input,button,.now-progress,.now-transport,.now-drawer")) return;
     const words = target.closest(".now-words") ? wordsRef.current?.querySelector<HTMLElement>(".lyr") ?? null : null;
-    gesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, axis: null, onArt: Boolean(target.closest(".now-art-wrap")), onWords: Boolean(words), from: drawer ? 1 : reveal, scroll: words?.scrollTop ?? 0, time: performance.now() };
+    gesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, axis: null, onArt: Boolean(target.closest(".now-art-wrap")), onWords: Boolean(words), seek: Boolean(target.closest("[data-lyr-seek]")), from: drawer ? 1 : reveal, scroll: words?.scrollTop ?? 0, time: performance.now() };
   }
 
   function onGestureMove(event: ReactPointerEvent<HTMLElement>) {
@@ -247,9 +247,10 @@ export default function NowPlayingView({
     gesture.current = null;
     if (!state) return;
     setAxis(null);
-    // A tap while the sheet is up puts it away again, wherever it landed.
+    // A tap while the sheet is up puts it away again, wherever it landed — except on a timed word,
+    // where the tap is the seek, and the words it moved to are the answer.
     if (!state.axis) {
-      if (drawer) onDisclosure(panel, false);
+      if (!state.seek && drawer) onDisclosure(panel, false);
       return;
     }
     // A read of the words never decides anything about the sheet.

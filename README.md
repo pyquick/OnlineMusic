@@ -10,6 +10,7 @@ A local-first music workbench: collect audio, video, and images into your own me
 - **Media ingestion** — audio `wav / mp3 / flac / aiff / m4a / ogg`, video `mp4 / mov / webm`, images `png / jpg / jpeg / webp`, up to 10000 assets per account.
 - **Automatic tag reading** — embedded title, artist, album, and cover art are parsed in the browser on import.
 - **Waveform and playback controls** — drag the waveform to seek, adjustable gain and playback rate, shuffle / previous / next / loop, plus a fullscreen Now Playing view.
+- **Full parameter editor** — one screen per track: the real decoded waveform (zoom, scrub, A/B loop region) with its own display dials — amplitude, peak/body blend, bar count, gap, mirror, grid, playhead — over a live effect chain (three-band EQ, stereo pan, compressor, pre-amp), true fade in/out, a level meter and five presets. Everything is saved with the track and recalled the next time it plays.
 - **Metadata editing** — title, artist, album, genre, lyrics, description, and tags.
 - **Library views** — grouped by album; the index streams line by line as NDJSON and covers are fetched on demand, so even large libraries show their first rows immediately.
 - **Responsive** — sidebar + workbench on desktop; a bottom pill navigation and fullscreen lyrics on narrow screens.

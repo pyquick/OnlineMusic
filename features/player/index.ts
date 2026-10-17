@@ -6,3 +6,6 @@
 export { useMediaClock } from "./useMediaClock";
 export { SeekBar } from "./SeekBar";
 export { WaveformTrack } from "./WaveformTrack";
+export { PEAK_BUCKETS, computePeaks, useWaveformPeaks, type WaveformPeak, type WaveformPeaks } from "./peaks";
+export { useAudioGraph, type AudioGraphHandle } from "./useAudioGraph";
+export { fadeGainAt, meterOf } from "./levels";

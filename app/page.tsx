@@ -52,7 +52,19 @@ import { RangeControl } from "@/design-system/components/RangeControl";
 import { coverSrc } from "@/shared/utilities/media";
 import { emptyLyricsDoc, parseLyrics, type LyricsDoc } from "@/shared/lyrics";
 import { fetchLyricsDoc } from "@/features/lyrics";
-import { SeekBar, WaveformTrack } from "@/features/player";
+import { SeekBar, WaveformTrack, useAudioGraph, useWaveformPeaks } from "@/features/player";
+import {
+  DEFAULT_TRACK_PARAMETERS,
+  DEFAULT_WAVEFORM_SETTINGS,
+  applyPreset,
+  parametersEqual,
+  sanitizeTrackParameters,
+  sanitizeWaveformSettings,
+  storedParameters,
+  type ParameterPreset,
+  type TrackParameters,
+  type WaveformSettings,
+} from "@/shared/parameters";
 import { formatTime } from "@/shared/utilities/time";
 import { ApiError, api, apiStream } from "@/infrastructure/api/client";
 import { resolveApiUrl } from "@/infrastructure/api/base";
@@ -95,6 +107,7 @@ function indexEntryToAsset(entry: IndexEntry): Asset {
   if (entry.durationMs !== undefined) metadata.durationMs = entry.durationMs;
   if (entry.lyrics) metadata.lyrics = entry.lyrics;
   if (entry.mimeType) metadata.mimeType = entry.mimeType;
+  if (entry.parameters) metadata.parameters = sanitizeTrackParameters(entry.parameters);
   if (entry.coverUrl) metadata.coverUrl = resolveApiUrl(entry.coverUrl);
   return {
     file: new File([], entry.name, { type: mimeType }),
@@ -272,37 +285,44 @@ function useCompact() {
 /** The playback and appearance fields of the stored blob; the glass dials are the glass system's
     own slice, read and written by features/glass through the same key. */
 type StoredSettings = {
-  gain: number;
-  rate: number;
-  volume: number;
-  eq: number;
-  fadeIn: number;
-  fadeOut: number;
+  parameters: TrackParameters;
+  waveform: WaveformSettings;
   appearance: Appearance;
 };
 
+/**
+ * A blob from before the parameter document existed carries the same dials as flat fields — the
+ * old `gain` was the master level and the old `eq` the single tone band, so they are folded into
+ * the new document instead of dropping a listener's settings on upgrade.
+ */
+type LegacySettingsBlob = {
+  parameters?: unknown;
+  waveform?: unknown;
+  appearance?: Partial<Appearance>;
+  gain?: number;
+  rate?: number;
+  volume?: number;
+  eq?: number;
+  fadeIn?: number;
+  fadeOut?: number;
+};
+
 function readStoredSettings(): StoredSettings {
-  const defaults: StoredSettings = {
-    gain: 72,
-    rate: 100,
-    volume: 72,
-    eq: 0,
-    fadeIn: 0,
-    fadeOut: 0,
-    appearance: DEFAULT_APPEARANCE,
-  };
+  const defaults: StoredSettings = { parameters: DEFAULT_TRACK_PARAMETERS, waveform: DEFAULT_WAVEFORM_SETTINGS, appearance: DEFAULT_APPEARANCE };
   if (typeof window === "undefined") return defaults;
   const stored = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
   if (!stored) return defaults;
   try {
-    const data = JSON.parse(stored) as Partial<StoredSettings> & { appearance?: Partial<Appearance> };
+    const data = JSON.parse(stored) as LegacySettingsBlob;
+    const legacy: Partial<TrackParameters> = {};
+    if (typeof data.volume === "number" || typeof data.gain === "number") legacy.volume = data.volume ?? data.gain;
+    if (typeof data.rate === "number") legacy.rate = data.rate;
+    if (typeof data.eq === "number") legacy.eq = { ...DEFAULT_TRACK_PARAMETERS.eq, mid: data.eq };
+    if (typeof data.fadeIn === "number") legacy.fadeIn = data.fadeIn;
+    if (typeof data.fadeOut === "number") legacy.fadeOut = data.fadeOut;
     return {
-      gain: typeof data.gain === "number" ? data.gain : defaults.gain,
-      rate: typeof data.rate === "number" ? data.rate : defaults.rate,
-      volume: typeof data.volume === "number" ? data.volume : defaults.volume,
-      eq: typeof data.eq === "number" ? data.eq : defaults.eq,
-      fadeIn: typeof data.fadeIn === "number" ? data.fadeIn : defaults.fadeIn,
-      fadeOut: typeof data.fadeOut === "number" ? data.fadeOut : defaults.fadeOut,
+      parameters: sanitizeTrackParameters(data.parameters ?? { ...DEFAULT_TRACK_PARAMETERS, ...legacy, gain: DEFAULT_TRACK_PARAMETERS.gain }),
+      waveform: sanitizeWaveformSettings(data.waveform),
       appearance: data.appearance ? { ...DEFAULT_APPEARANCE, ...data.appearance } : defaults.appearance,
     };
   } catch {
@@ -334,10 +354,12 @@ export default function Home() {
   const [asset, setAsset] = useState<Asset | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [playing, setPlaying] = useState(false);
-  const [gain, setGain] = useState(72);
-  const [fadeIn, setFadeIn] = useState(0);
-  const [fadeOut, setFadeOut] = useState(0);
-  const [rate, setRate] = useState(100);
+  /** The track's sound-shaping document — the parameter editor's source of truth. */
+  const [params, setParams] = useState<TrackParameters>(DEFAULT_TRACK_PARAMETERS);
+  /** The document as it was last saved or loaded, so "unsaved changes" is a comparison. */
+  const [savedParams, setSavedParams] = useState<TrackParameters>(DEFAULT_TRACK_PARAMETERS);
+  /** How the waveform is drawn: a viewing preference, kept with the other local settings. */
+  const [waveformSettings, setWaveformSettings] = useState<WaveformSettings>(DEFAULT_WAVEFORM_SETTINGS);
   const [saved, setSaved] = useState(false);
   const [view, setView] = useState<View>("studio");
   const [expandedAlbum, setExpandedAlbum] = useState<string | null>(null);
@@ -349,10 +371,8 @@ export default function Home() {
   const [authError, setAuthError] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [volume, setVolume] = useState(72);
   const [queue, setQueue] = useState<string[]>([]);
   const [playOrder, setPlayOrder] = useState<string[]>([]);
-  const [eq, setEq] = useState(0);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [metadataPanelOpen, setMetadataPanelOpen] = useState(false);
   const [projectMenu, setProjectMenu] = useState<string | null>(null);
@@ -399,8 +419,34 @@ export default function Home() {
       pixels. Functional code touches the glass through this handle and the declarative DOM
       markers, never through the engines directly. */
   const glass = useGlassSystem(shellRef, appearance);
+  /**
+   * The dials the rest of the studio already speaks: the master level, the rate and the old single
+   * tone band are read out of the parameter document, so the bar, the studio editor and the
+   * fullscreen player keep working while the parameter editor edits the whole shape.
+   */
+  const { gain, rate, volume, fadeIn, fadeOut } = params;
+  const eq = params.eq.mid;
+
+  /** One writer for the document: every patch is sanitized, so no control can store a stray value. */
+  const updateParams = useCallback((patch: Partial<TrackParameters>) => {
+    setParams((current) => sanitizeTrackParameters({ ...current, ...patch }));
+  }, []);
+  const updateWaveform = useCallback((patch: Partial<WaveformSettings>) => {
+    setWaveformSettings((current) => sanitizeWaveformSettings({ ...current, ...patch }));
+  }, []);
+  /** The editor's preset button: the patch lands on the tone and dynamics, nothing else moves. */
+  const applyParameterPreset = useCallback((preset: ParameterPreset) => {
+    setParams((current) => applyPreset(current, preset));
+  }, []);
+
   /** The level the fullscreen speaker comes back to when it is unmuted; 72 is the dial's own default. */
-  const lastGainRef = useRef(gain || 72);
+  const lastGainRef = useRef(volume || 72);
+  /** The parameter editor's A/B switch: the chain steps aside while the listener compares. */
+  const [bypass, setBypass] = useState(false);
+  /** The selected track's decoded waveform, for the precision editor's canvas. */
+  const peaks = useWaveformPeaks(asset?.kind === "audio" ? asset.url : null);
+  /** The live effect chain, built on the first play and driven by the document above. */
+  const graph = useAudioGraph(audioRef, params, bypass);
   const prefetchedRef = useRef<Set<string>>(new Set());
   const prefetchRef = useRef<HTMLMediaElement | null>(null);
   const prefetchTimer = useRef<number | null>(null);
@@ -423,12 +469,9 @@ export default function Home() {
 
   useLayoutEffect(() => {
     const current = readStoredSettings();
-    setGain(current.gain);
-    setRate(current.rate);
-    setVolume(current.volume);
-    setEq(current.eq);
-    setFadeIn(current.fadeIn);
-    setFadeOut(current.fadeOut);
+    setParams(current.parameters);
+    setSavedParams(current.parameters);
+    setWaveformSettings(current.waveform);
     setAppearance(current.appearance);
     setSettingsReady(true);
   }, []);
@@ -442,8 +485,40 @@ export default function Home() {
     // The blob is merged rather than rebuilt: the glass system owns its own fields under the
     // same key, and anything else a past build left there rides along instead of being dropped.
     const previous = (() => { try { return JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) || "{}") as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })();
-    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ ...previous, gain, rate, volume, eq, fadeIn, fadeOut, ...glass.stored, appearance }));
-  }, [settingsReady, glass.ready, glass.stored, gain, rate, volume, eq, fadeIn, fadeOut, appearance]);
+    // The document is written whole, and the old flat fields ride along so a build that predates
+    // it still finds the numbers it knows.
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
+      ...previous,
+      parameters: params,
+      waveform: waveformSettings,
+      gain: params.gain,
+      rate: params.rate,
+      volume: params.volume,
+      eq: params.eq.mid,
+      fadeIn: params.fadeIn,
+      fadeOut: params.fadeOut,
+      ...glass.stored,
+      appearance,
+    }));
+  }, [settingsReady, glass.ready, glass.stored, params, waveformSettings, appearance]);
+
+  /**
+   * A track's own document wins the moment the track is selected: it rides the index row, so a
+   * saved curve, fades and loop come back with the song instead of staying on the previous one.
+   * A row without a document leaves the dials alone — that is the listener's own default — and the
+   * adoption re-baselines "unsaved changes" in the same breath. The guard keeps a re-render from
+   * clobbering edits made while the same song is open.
+   */
+  const adoptedAssetRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = asset?.apiId ?? asset?.file.name ?? null;
+    if (!key || adoptedAssetRef.current === key) return;
+    adoptedAssetRef.current = key;
+    const stored = storedParameters(asset?.metadata.parameters);
+    if (!stored) return;
+    setParams(stored);
+    setSavedParams(stored);
+  }, [asset?.apiId, asset?.file.name, asset?.metadata.parameters]);
 
   /**
    * Every screen keeps the place it was scrolled to, like a tab. The studio scrolls the window,
@@ -688,8 +763,10 @@ export default function Home() {
     const audio = audioRef.current;
     if (!audio) return;
     try { audio.playbackRate = rate / 100; } catch { /* Safari rejects a rate change before metadata */ }
-    applyVolume(audio, gain / 100);
-  }, [rate, gain]);
+    // The pre-amp and the tone chain live in the Web Audio graph (`useAudioGraph`); this is the
+    // element's own output level, the one the transport bar's speaker and the fullscreen view share.
+    applyVolume(audio, volume / 100);
+  }, [rate, volume]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -919,9 +996,9 @@ export default function Home() {
 
   /** The fullscreen pill's speaker: silence, or back to the level that was in use a moment ago. */
   function toggleMute() {
-    if (gain === 0) { setGain(lastGainRef.current); return; }
-    lastGainRef.current = gain;
-    setGain(0);
+    if (volume === 0) { updateParams({ volume: lastGainRef.current }); return; }
+    lastGainRef.current = volume;
+    updateParams({ volume: 0 });
   }
 
   /**
@@ -1261,12 +1338,24 @@ export default function Home() {
       try {
         await api.patch(`/api/assets/${encodeURIComponent(asset.apiId)}`, {
           name: asset.file.name,
-          metadata: { title: asset.title, artist: asset.artist, album: asset.album, genre: asset.genre, coverData: asset.metadata.coverData, gain, rate, eq, fadeIn, fadeOut },
+          metadata: {
+            title: asset.title,
+            artist: asset.artist,
+            album: asset.album,
+            genre: asset.genre,
+            coverData: asset.metadata.coverData,
+            // The whole sound-shaping document, so the track comes back the way it was left.
+            parameters: params,
+          },
         });
       } catch {
         // Keep local metadata changes when the API is unavailable.
       }
     }
+    // The row the client holds mirrors what was just written, so selecting the song again in this
+    // session restores it without waiting for the index stream to come round.
+    patchAsset(asset.file, (item) => ({ ...item, metadata: { ...item.metadata, parameters: params } }));
+    setSavedParams(params);
     setSaved(true);
     window.localStorage.setItem(`onlinemusic-metadata-${asset.file.name}`, JSON.stringify({ title: asset.title, artist: asset.artist, album: asset.album, genre: asset.genre }));
   }
@@ -1292,7 +1381,7 @@ export default function Home() {
           <div className="welcome-row"><h1>Your media studio <span>✦</span></h1><div className="welcome-actions"><button className="ghost-button" data-glass-edge="" onClick={openImport}><Upload size={16} /> Import audio</button><button className="primary-button" onClick={openImport}><Plus size={17} /> New project</button></div></div>
           <div className="section-heading asset-heading"><h2>Your assets</h2><div className="asset-tools"><span className="asset-count">{assets.length} assets</span>{queue.length > 0 && <span className="asset-count">{queue.length} queued</span>}<button className="small-action" data-glass-edge="" onClick={openImport}><Plus size={14} /> Add</button></div></div>
           <div className="asset-strip">{assets.slice(0, 4).map((item) => <button className={`asset-card ${asset?.file.name === item.file.name ? "selected-asset" : ""}`} data-glass-edge="" key={item.file.name} onClick={() => { setPlaying(false); setAsset(item); }} onPointerEnter={() => schedulePrefetch(item)} onPointerLeave={cancelPrefetch}><span className="asset-thumb imported">{asset?.file.name === item.file.name ? <Check size={18} /> : item.kind === "video" ? <FileVideo size={19} /> : <FileAudio size={19} />}</span><span className="asset-text"><strong>{item.title || item.file.name}</strong><small>{formatBytes(assetSize(item))} · {item.kind}</small></span></button>)}{assets.length === 0 && <div className="empty-assets" data-glass-edge="">No local media yet. Import a file to begin.</div>}</div>
-          {asset?.kind === "audio" ? <section className="editor-layout"><div className="editor-panel panel" data-glass-edge=""><div className="panel-heading"><div><p className="eyebrow">Selected asset</p><h2>{asset.title || asset.file.name}</h2></div><div className="panel-heading-actions"><button className="toolbar-button" data-glass-edge="" onClick={openLyricsEditor}><Pencil size={14} /> Edit lyrics</button><button className="toolbar-button" data-glass-edge="" onClick={() => setParametersOpen(true)}><SlidersHorizontal size={14} /> Full parameter editor</button><button className="icon-button" aria-label="Close editor" onClick={() => { setPlaying(false); setAsset(null); }}><X size={17} /></button></div></div><div className="wave-editor"><div className="wave-toolbar"><span><Activity size={15} /> Waveform</span><button className="toolbar-button" data-glass-edge="" onClick={togglePlayback}>{playing ? <Pause size={14} /> : <Play size={14} />} {playing ? "Pause" : "Preview"}</button></div><WaveformTrack media={audioRef} waveform={waveform} ariaLabel="Seek waveform" /></div><div className="controls-grid"><RangeControl label="Gain" value={gain} min={0} max={100} display={`${gain}%`} onChange={setGain} /><RangeControl label="Playback rate" value={rate} min={50} max={150} display={`${(rate / 100).toFixed(2)}x`} onChange={setRate} /></div><div className="advanced-row"><button className="toolbar-button" data-glass-edge="" onClick={() => setShowAdvanced((open) => !open)}><SlidersHorizontal size={14} /> {showAdvanced ? "Hide sound controls" : "More sound controls"}</button>{showAdvanced && <RangeControl label="Tone / EQ" value={eq} min={-100} max={100} display={`${eq > 0 ? "+" : ""}${eq}`} onChange={setEq} />}</div><button className="queue-add" data-glass-edge="" onClick={addToQueue}><ListMusic size={14} /> Add to queue</button></div><aside className="details-column"><div className="panel metadata-panel" data-glass-edge=""><div className="panel-title"><SlidersHorizontal size={16} /><h3>Metadata</h3></div>{(["title", "artist", "album", "genre"] as const).map((field) => <label key={field}>{field}<input data-glass-edge="" value={asset[field]} placeholder={`Add ${field}`} onChange={(event) => updateMetadata(field, event.target.value)} /></label>)}<button className="save-button" onClick={saveMetadata}>{saved ? "Saved" : "Save metadata"}</button></div></aside></section> : <section className="empty-editor panel" data-glass-edge="">
+          {asset?.kind === "audio" ? <section className="editor-layout"><div className="editor-panel panel" data-glass-edge=""><div className="panel-heading"><div><p className="eyebrow">Selected asset</p><h2>{asset.title || asset.file.name}</h2></div><div className="panel-heading-actions"><button className="toolbar-button" data-glass-edge="" onClick={openLyricsEditor}><Pencil size={14} /> Edit lyrics</button><button className="toolbar-button" data-glass-edge="" onClick={() => setParametersOpen(true)}><SlidersHorizontal size={14} /> Full parameter editor</button><button className="icon-button" aria-label="Close editor" onClick={() => { setPlaying(false); setAsset(null); }}><X size={17} /></button></div></div><div className="wave-editor"><div className="wave-toolbar"><span><Activity size={15} /> Waveform</span><button className="toolbar-button" data-glass-edge="" onClick={togglePlayback}>{playing ? <Pause size={14} /> : <Play size={14} />} {playing ? "Pause" : "Preview"}</button></div><WaveformTrack media={audioRef} waveform={waveform} peaks={peaks} ariaLabel="Seek waveform" /></div><div className="controls-grid"><RangeControl label="Pre-amp gain" value={gain} min={0} max={200} display={`${gain}%`} onChange={(value) => updateParams({ gain: value })} /><RangeControl label="Playback rate" value={rate} min={50} max={200} display={`${(rate / 100).toFixed(2)}x`} onChange={(value) => updateParams({ rate: value })} /></div><div className="advanced-row"><button className="toolbar-button" data-glass-edge="" onClick={() => setShowAdvanced((open) => !open)}><SlidersHorizontal size={14} /> {showAdvanced ? "Hide sound controls" : "More sound controls"}</button>{showAdvanced && <RangeControl label="Tone / EQ" value={eq} min={-12} max={12} step={0.5} display={`${eq > 0 ? "+" : ""}${eq} dB`} onChange={(value) => updateParams({ eq: { ...params.eq, mid: value } })} />}</div><button className="queue-add" data-glass-edge="" onClick={addToQueue}><ListMusic size={14} /> Add to queue</button></div><aside className="details-column"><div className="panel metadata-panel" data-glass-edge=""><div className="panel-title"><SlidersHorizontal size={16} /><h3>Metadata</h3></div>{(["title", "artist", "album", "genre"] as const).map((field) => <label key={field}>{field}<input data-glass-edge="" value={asset[field]} placeholder={`Add ${field}`} onChange={(event) => updateMetadata(field, event.target.value)} /></label>)}<button className="save-button" onClick={saveMetadata}>{saved ? "Saved" : "Save metadata"}</button></div></aside></section> : <section className="empty-editor panel" data-glass-edge="">
   <div className="empty-editor-head">
     <div className="empty-icon"><FolderOpen size={22} /></div>
     <div>
@@ -1318,21 +1407,20 @@ export default function Home() {
       {parametersOpen && asset && <ParametersScreen
         title={asset.title || asset.file.name}
         waveform={waveform}
+        peaks={peaks}
         media={audioRef}
+        graph={graph}
         playing={playing}
-        saved={saved}
-        rate={rate}
-        volume={volume}
-        gain={gain}
-        eq={eq}
-        fadeIn={fadeIn}
-        fadeOut={fadeOut}
-        onRate={setRate}
-        onVolume={(value) => { setVolume(value); if (audioRef.current) audioRef.current.volume = value / 100; }}
-        onGain={setGain}
-        onEq={setEq}
-        onFadeIn={setFadeIn}
-        onFadeOut={setFadeOut}
+        saved={parametersEqual(params, savedParams)}
+        params={params}
+        waveformSettings={waveformSettings}
+        bypass={bypass}
+        onParam={(key, value) => updateParams({ [key]: value } as Partial<TrackParameters>)}
+        onWaveform={updateWaveform}
+        onPreset={applyParameterPreset}
+        onReset={() => setParams(DEFAULT_TRACK_PARAMETERS)}
+        onRevert={() => setParams(savedParams)}
+        onBypass={setBypass}
         onTogglePlayback={togglePlayback}
         onSave={saveMetadata}
         onClose={() => setParametersOpen(false)}
@@ -1348,7 +1436,7 @@ export default function Home() {
         queueNames={queueNames}
         playing={playing}
         playStarting={playStarting}
-        gain={gain}
+        gain={volume}
         canStep={canStep}
         shuffleOn={shuffleOn}
         loopOn={loopOn}
@@ -1363,7 +1451,7 @@ export default function Home() {
         onClosed={() => { setNowOpen(false); setNowClosing(false); }}
         onTogglePlayback={togglePlayback}
         onToggleMute={toggleMute}
-        onGain={setGain}
+        onGain={(value) => updateParams({ volume: value })}
         onStep={playTrack}
         onToggleShuffle={() => setShuffleOn((on) => !on)}
         onToggleLoop={() => setLoopOn((on) => !on)}
@@ -1412,7 +1500,7 @@ export default function Home() {
 
       {compact && !videoOverlay && <BottomPill items={pillItems} current={view} onSelect={(id) => goTo(id as View)} onRaiseChange={setBubbleRaised} />}
 
-      {!videoOverlay && <div className={`player glass-bar ${asset?.kind === "audio" && playing ? "audio-playing" : ""}`} data-glass-edge="" data-glass-scene="fixed-shell" data-steppable={canStep ? "" : undefined}><div className="now-playing"><button className="mini-cover-button" onClick={() => setNowOpen(true)} aria-label="Open now playing" title="Now playing"><span className={`mini-cover ${playing && asset?.kind === "audio" ? "is-playing" : ""}`}>{barCover ? <img src={barCover} alt="" crossOrigin="use-credentials" /> : asset?.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="mini-cover-expand" aria-hidden="true"><Maximize2 size={13} /></span></span></button><div className="now-playing-copy"><strong className={asset && (asset.title || asset.file.name).length > 28 ? "is-long-title" : ""}><span>{asset?.title || "No asset selected"}</span></strong><small className={mediaError ? "is-error" : ""}>{mediaError || (asset ? `${asset.kind} · local preview` : "Import something to begin")}</small></div></div><div className="player-controls">{canStep && <button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={() => setShuffleOn((on) => !on)} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={15} /></button>}<button className="icon-button transport-step" onClick={() => playTrack(-1)} disabled={!canStep} aria-label="Previous song" title="Previous"><SkipBack size={24} /></button><button className={`player-button ${playStarting ? "is-starting" : ""}`} onClick={togglePlayback} aria-label={playing ? "Pause" : "Play"} disabled={!asset || asset.kind !== "audio"}>{playing ? <PauseGlyph size={36} /> : <PlayGlyph size={36} />}</button><button className="icon-button transport-step" onClick={() => playTrack(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={24} /></button>{canStep && <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={() => setLoopOn((on) => !on)} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={15} /></button>}<SeekBar media={audioRef} /></div><div className={`player-actions bar-cluster ${volumeOpen ? "is-volume-open" : ""}`}><button className={`glass-button bar-tool ${lyricsOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => { setLyricsOpen((open) => !open); setProjectsOpen(false); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button><button className={`glass-button bar-tool ${projectsOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => { setProjectsOpen((open) => !open); setLyricsOpen(false); }} aria-label="Projects" title="Projects"><List size={17} /></button><div className={`volume-cluster ${volumeOpen ? "is-open" : ""}`}><span className="volume-slider"><input type="range" min="0" max="100" value={gain} style={{ "--seek": `${gain}%` } as CSSProperties} tabIndex={volumeOpen ? 0 : -1} aria-hidden={!volumeOpen} onChange={(event) => setGain(Number(event.target.value))} aria-label="Volume" /></span><button className={`glass-button ${volumeOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => setVolumeOpen((open) => !open)} aria-label="Volume" title="Volume">{gain === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div></div></div>}
+      {!videoOverlay && <div className={`player glass-bar ${asset?.kind === "audio" && playing ? "audio-playing" : ""}`} data-glass-edge="" data-glass-scene="fixed-shell" data-steppable={canStep ? "" : undefined}><div className="now-playing"><button className="mini-cover-button" onClick={() => setNowOpen(true)} aria-label="Open now playing" title="Now playing"><span className={`mini-cover ${playing && asset?.kind === "audio" ? "is-playing" : ""}`}>{barCover ? <img src={barCover} alt="" crossOrigin="use-credentials" /> : asset?.kind === "video" ? <FileVideo size={16} /> : <Music2 size={16} />}<span className="mini-cover-expand" aria-hidden="true"><Maximize2 size={13} /></span></span></button><div className="now-playing-copy"><strong className={asset && (asset.title || asset.file.name).length > 28 ? "is-long-title" : ""}><span>{asset?.title || "No asset selected"}</span></strong><small className={mediaError ? "is-error" : ""}>{mediaError || (asset ? `${asset.kind} · local preview` : "Import something to begin")}</small></div></div><div className="player-controls">{canStep && <button className={`transport-extra ${shuffleOn ? "is-on" : ""}`} onClick={() => setShuffleOn((on) => !on)} aria-label="Shuffle" aria-pressed={shuffleOn} title="Shuffle"><Shuffle size={15} /></button>}<button className="icon-button transport-step" onClick={() => playTrack(-1)} disabled={!canStep} aria-label="Previous song" title="Previous"><SkipBack size={24} /></button><button className={`player-button ${playStarting ? "is-starting" : ""}`} onClick={togglePlayback} aria-label={playing ? "Pause" : "Play"} disabled={!asset || asset.kind !== "audio"}>{playing ? <PauseGlyph size={36} /> : <PlayGlyph size={36} />}</button><button className="icon-button transport-step" onClick={() => playTrack(1)} disabled={!canStep} aria-label="Next song" title="Next"><SkipForward size={24} /></button>{canStep && <button className={`transport-extra ${loopOn ? "is-on" : ""}`} onClick={() => setLoopOn((on) => !on)} aria-label="Repeat list" aria-pressed={loopOn} title="Repeat list"><Repeat size={15} /></button>}<SeekBar media={audioRef} /></div><div className={`player-actions bar-cluster ${volumeOpen ? "is-volume-open" : ""}`}><button className={`glass-button bar-tool ${lyricsOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => { setLyricsOpen((open) => !open); setProjectsOpen(false); }} aria-label="Lyrics" title="Lyrics"><MessageSquareQuote size={17} /></button><button className={`glass-button bar-tool ${projectsOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => { setProjectsOpen((open) => !open); setLyricsOpen(false); }} aria-label="Projects" title="Projects"><List size={17} /></button><div className={`volume-cluster ${volumeOpen ? "is-open" : ""}`}><span className="volume-slider"><input type="range" min="0" max="100" value={volume} style={{ "--seek": `${volume}%` } as CSSProperties} tabIndex={volumeOpen ? 0 : -1} aria-hidden={!volumeOpen} onChange={(event) => updateParams({ volume: Number(event.target.value) })} aria-label="Volume" /></span><button className={`glass-button ${volumeOpen ? "is-active" : ""}`} data-glass-edge="1" data-glass-scene="nested-host" onClick={() => setVolumeOpen((open) => !open)} aria-label="Volume" title="Volume">{volume === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div></div></div>}
 
 
       {authOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAuthOpen(false)}><div className="auth-modal" data-glass-edge="" role="dialog" aria-modal="true"><div className="modal-heading"><div><p className="eyebrow">Local account</p><h2>{authMode === "login" ? "Welcome back" : "Create your account"}</h2><p>Your account stays on this device. No external service required.</p></div><button className="icon-button" onClick={() => setAuthOpen(false)}><X size={18} /></button></div>{user ? <><div className="account-badge"><UserRound size={17} /> Signed in as {user.email}</div><button className="save-button" onClick={async () => { await api.delete("/api/auth").catch(() => { /* signing out locally either way */ }); setUser(null); window.localStorage.removeItem("onlinemusic-user"); setAuthOpen(false); }}>Sign out</button></> : <form className="auth-form" onSubmit={async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const email = String(data.get("email") || "").trim().toLowerCase(); const password = String(data.get("password") || ""); const name = String(data.get("name") || email.split("@")[0] || "User"); setAuthError(""); try { const payload = await api.post<{ user: { email: string; name: string } }>("/api/auth", { mode: authMode, email, password, name }); setUser(payload.user); window.localStorage.setItem("onlinemusic-user", JSON.stringify(payload.user)); setAuthOpen(false); } catch (error) { setAuthError(error instanceof ApiError && !error.isNetwork ? error.message : "Could not reach the server — try again in a moment."); } }}><div className="auth-tabs"><button type="button" data-glass-edge="" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>Log in</button><button type="button" data-glass-edge="" className={authMode === "register" ? "active" : ""} onClick={() => setAuthMode("register")}>Register</button></div>{authMode === "register" && <label>Name<input data-glass-edge="" name="name" placeholder="Your name" /></label>}<label>Email<input data-glass-edge="" name="email" type="email" required placeholder="you@example.com" /></label><label>Password<input data-glass-edge="" name="password" type="password" required minLength={6} placeholder="At least 6 characters" /></label>{authError && <p className="error-message">{authError}</p>}<button className="primary-button auth-submit" type="submit"><LockKeyhole size={15} /> {authMode === "login" ? "Log in" : "Create account"}</button></form>}</div></div>}

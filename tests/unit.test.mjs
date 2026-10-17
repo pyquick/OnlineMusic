@@ -16,7 +16,7 @@ import { validateCreateInput, validateMetadata, AssetValidationError } from "../
 import { assetIndexEntry } from "../lib/assets.ts";
 import { parseLyrics, parseLyricsJson, docFromLines } from "../shared/lyrics/parse.ts";
 import { toLrc } from "../shared/lyrics/serialize.ts";
-import { lineAt, lineEnd, lineState, tokenProgress, tokenFill, docDuration, hasTiming, hasWordTiming } from "../shared/lyrics/timeline.ts";
+import { lineAt, lineEnd, lineState, tokenProgress, tokenFill, tokenDuration, docDuration, hasTiming, hasWordTiming, seekTime } from "../shared/lyrics/timeline.ts";
 import { tokenizeText, tokenizeLine } from "../shared/lyrics/tokenizer.ts";
 import { parseStamp, stampText } from "../features/lyrics/format.ts";
 import {
@@ -202,6 +202,24 @@ describe("the lyrics timeline", () => {
     const allUntimed = { version: 1, lines: [{ text: "x", start: 0, tokens: [{ text: "x" }] }] };
     assert.equal(lineEnd(allUntimed, 0), Number.POSITIVE_INFINITY);    // nothing timed ends it
     assert.equal(docDuration({ version: 1, lines: [{ text: "x", tokens: [{ text: "x" }] }] }), 0);
+  });
+
+  test("tokenDuration measures a token's own span, and only when it is fully timed", () => {
+    assert.equal(tokenDuration({ text: "解", start: 134.014, end: 136.477 }), 2.463);  // a held note
+    assert.equal(tokenDuration({ text: "x", start: 1 }), 0);
+    assert.equal(tokenDuration({ text: "x" }), 0);
+    assert.equal(tokenDuration(undefined), 0);
+    assert.equal(tokenDuration({ text: "x", start: 3, end: 1 }), 0);                   // never negative
+  });
+
+  test("a press on the words knows where the playhead goes", () => {
+    const words = { text: "a b", start: 10, end: 12, tokens: [{ text: "a", start: 10, end: 11 }, { text: "b" }] };
+    assert.equal(seekTime(words, 0), 10);                             // the word's own start answers
+    assert.equal(seekTime(words, 1), null);                           // a word-timed line says nothing for an untimed word
+    assert.equal(seekTime({ text: "x", start: 4, end: 5 }, -1), 4);   // line-level timing answers for the whole line
+    assert.equal(seekTime({ text: "x", start: 4, tokens: [{ text: "x" }] }, 0), 4);
+    assert.equal(seekTime({ text: "x", tokens: [{ text: "x" }] }, 0), null);
+    assert.equal(seekTime({ text: "x" }, -1), null);
   });
 });
 

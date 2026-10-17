@@ -66,6 +66,19 @@ export function focusIndex(doc: LyricsDoc, t: number): number {
   return lineAt(doc, t);
 }
 
+/**
+ * Where a press on the words sends the playhead. The clicked word answers with its own start; a
+ * line whose words carry no times answers with the line's start, because there the whole line is
+ * the word. Null means the pressed text carries no time at all — the press has no answer, and the
+ * caller leaves the playhead where it is.
+ */
+export function seekTime(line: LyricsLine, tokenIndex: number = -1): number | null {
+  const token = tokenIndex >= 0 ? line.tokens?.[tokenIndex] : undefined;
+  if (token && typeof token.start === "number") return token.start;
+  if (hasWordTiming(line)) return null;
+  return typeof line.start === "number" ? line.start : null;
+}
+
 /** How far through the line's own span `t` is; the fallback fill for a line without tokens. */
 export function lineFill(doc: LyricsDoc, index: number, t: number): number {
   const line = doc.lines[index];
@@ -80,6 +93,15 @@ export function tokenFill(token: LyricsToken, t: number): number {
   if (typeof token.start !== "number" || typeof token.end !== "number") return 0;
   if (token.end <= token.start) return t >= token.end ? 1 : 0;
   return clamp((t - token.start) / (token.end - token.start));
+}
+
+/**
+ * How long a token's own span lasts, in seconds — 0 when it carries no complete timing. This is
+ * what tells a held note from a spoken one: the renderer lets only the long ones bloom.
+ */
+export function tokenDuration(token: LyricsToken | undefined): number {
+  if (!token || typeof token.start !== "number" || typeof token.end !== "number") return 0;
+  return round3(Math.max(0, token.end - token.start));
 }
 
 /**

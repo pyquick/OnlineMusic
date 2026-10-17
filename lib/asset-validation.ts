@@ -13,6 +13,7 @@ import {
   type MediaKind,
   type UpdateAssetInput,
 } from "./assets";
+import { storedParameters } from "@/shared/parameters";
 
 export class AssetValidationError extends Error {
   constructor(message: string) {
@@ -86,6 +87,12 @@ export function validateMetadata(value: unknown): AssetMetadata {
   }
   const mimeType = optionalString(value.mimeType, "metadata.mimeType", MAX_NAME_LENGTH);
   if (mimeType !== undefined) metadata.mimeType = mimeType;
+
+  // The parameter editor's document. Anything that is a record is adopted through the shared
+  // sanitizer, so an out-of-range dial written by an older client lands on the nearest legal
+  // value instead of being thrown away or breaking the mixer that reads it back.
+  const parameters = storedParameters(value.parameters);
+  if (parameters !== undefined) metadata.parameters = parameters;
 
   return metadata;
 }
