@@ -555,8 +555,7 @@
 .lyrics-body{margin-top:12px;padding-right:6px;overflow-y:auto;color:#3f455c;font-size:var(--text-lg);line-height:1.9;
   -webkit-mask-image:linear-gradient(to bottom,#0000 0,#000 16px,#000 calc(100% - 18px),#0000 100%);
   mask-image:linear-gradient(to bottom,#0000 0,#000 16px,#000 calc(100% - 18px),#0000 100%)}
-.lyrics-body p{margin:0 0 10px;animation:line-in .35s ease both}
-@keyframes line-in{from{opacity:0;translate:0 6px}to{opacity:1;translate:0 0}}
+.lyrics-body p{margin:0 0 10px}
 .project-list{margin-top:12px;overflow-y:auto}
 .project-list-group+.project-list-group{margin-top:14px}
 .project-list-row{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;border-radius:var(--radius-inner);background:none;color:#5f6580;font-size:var(--text-md);text-align:left;transition:background .18s ease,color .18s ease}

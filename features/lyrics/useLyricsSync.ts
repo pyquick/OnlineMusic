@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { hasTiming, hasWordTiming, lineAt, lineEnd, lineFill, tokenDuration, tokenProgress, type LyricsDoc } from "@/shared/lyrics";
+import { hasTiming, hasWordTiming, lineAt, lineEnd, lineFill, tokenProgress, type LyricsDoc } from "@/shared/lyrics";
 
 /**
  * The playback synchroniser — the engine between the timeline and the renderer.
@@ -26,8 +26,6 @@ export type LyricsSync = {
 const SUSPEND_MS = 4000;
 /** The scroll easing's approach per frame; small enough to read as motion, not as a jump. */
 const EASE = 0.22;
-/** A token whose own span runs longer than this is a held note — the only word allowed to bloom. */
-const HOLD_SECONDS = 2;
 
 export function useLyricsSync(media: RefObject<HTMLMediaElement | null>, doc: LyricsDoc | null): LyricsSync {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -39,7 +37,6 @@ export function useLyricsSync(media: RefObject<HTMLMediaElement | null>, doc: Ly
   const pendingScroll = useRef(false);
   const painted = useRef({ line: -2, index: -2 });
   const spans = useRef<HTMLElement[]>([]);
-  const gliding = useRef(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -56,7 +53,6 @@ export function useLyricsSync(media: RefObject<HTMLMediaElement | null>, doc: Ly
     const audio = element;
     const lyrics = timed;
     const rail = sheet.firstElementChild as HTMLElement | null;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     painted.current = { line: -2, index: -2 };
     spans.current = [];
 
@@ -83,54 +79,28 @@ export function useLyricsSync(media: RefObject<HTMLMediaElement | null>, doc: Ly
       return Math.max(0, line.offsetTop - (sheet.clientHeight - line.offsetHeight) / 2);
     }
 
-    /**
-     * Publishes whether the rail is mid-glide, as a class on the sheet. The stylesheet reads it to
-     * give the live line a little more lift for exactly as long as the move lasts (see
-     * `.lyr.is-gliding` in lyrics.css) — a transient the renderer has no React state for, and
-     * should not: a re-render per frame is the one thing this loop exists to avoid.
-     */
-    function setGlide(on: boolean) {
-      if (gliding.current === on) return;
-      gliding.current = on;
-      sheet.classList.toggle("is-gliding", on);
-    }
-
     function jumpToLine(index: number) {
       const value = lineTop(index);
       if (value === null) return;
       target.current = null;
-      setGlide(false);
       sheet.scrollTop = value;
     }
 
     function scrollToLine(index: number) {
       const value = lineTop(index);
       if (value === null) return;
-      if (reduced) {
-        target.current = null;
-        setGlide(false);
-        sheet.scrollTop = value;
-        return;
-      }
-      // A move that lands where the sheet already sits has nothing to animate, and would only
-      // flash the extra lift on for a frame, so it steps straight to the value.
       if (Math.abs(value - sheet.scrollTop) < 0.6) {
         target.current = null;
-        setGlide(false);
         sheet.scrollTop = value;
         return;
       }
       target.current = value;
-      setGlide(true);
     }
 
     function paint(line: number, t: number) {
       const entry = lyrics.lines[line];
       if (!entry) return;
       if (painted.current.line !== line) {
-        // The line leaving the stage drops its mark: a held word must not still be lit when the
-        // reading comes back around to it.
-        for (const span of spans.current) span.classList.remove("is-hold");
         painted.current = { line, index: -2 };
         spans.current = Array.from(sheet.querySelectorAll<HTMLElement>(`[data-lyr-line="${line}"] .lyr-token`));
       }
@@ -143,12 +113,9 @@ export function useLyricsSync(media: RefObject<HTMLMediaElement | null>, doc: Ly
       }
       const progress = tokenProgress(entry, t);
       if (painted.current.index !== progress.index) {
-        // The held note is the one word allowed to bloom, and only while it is the one being sung.
-        const hold = progress.index >= 0 && tokenDuration(entry.tokens?.[progress.index]) > HOLD_SECONDS;
         for (let index = 0; index < spans.current.length; index += 1) {
           const span = spans.current[index];
           span.style.setProperty("--lyr-fill", index < progress.index ? "100%" : "0%");
-          span.classList.toggle("is-hold", hold && index === progress.index);
         }
         painted.current.index = progress.index;
       }
@@ -177,7 +144,6 @@ export function useLyricsSync(media: RefObject<HTMLMediaElement | null>, doc: Ly
         if (Math.abs(delta) < 0.6) {
           sheet.scrollTop = target.current;
           target.current = null;
-          setGlide(false);
         } else {
           sheet.scrollTop = at + delta * EASE;
           // A scroller snaps to whole device pixels, so a step smaller than one never moves it and
@@ -186,7 +152,6 @@ export function useLyricsSync(media: RefObject<HTMLMediaElement | null>, doc: Ly
           // the live line holding its gliding lift long after the move ended.
           if (sheet.scrollTop === at) {
             target.current = null;
-            setGlide(false);
           }
         }
       }
@@ -249,7 +214,6 @@ export function useLyricsSync(media: RefObject<HTMLMediaElement | null>, doc: Ly
       if (frame.current) window.cancelAnimationFrame(frame.current);
       frame.current = 0;
       window.clearTimeout(resume);
-      setGlide(false);
       observer.disconnect();
       audio.removeEventListener("play", onSeek);
       audio.removeEventListener("seeking", onSeek);
