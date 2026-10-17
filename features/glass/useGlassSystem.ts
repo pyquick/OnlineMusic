@@ -3,16 +3,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { attachGlassEdge } from "@/lib/glassEdge";
+import { attachGlassRainbow } from "@/lib/glassRainbow";
 import { setAutoShade, startInkSampler, touchScene } from "@/lib/inkSampler";
 import { SETTINGS_STORAGE_KEY } from "@/shared/utilities/settings";
 import type { Appearance } from "@/features/appearance";
 import { DEFAULT_GLASS_SETTINGS, glassStoredFields, readGlassSettings, type GlassSettings, type StoredGlassFields } from "./model";
 
 /**
- * The event functional code dispatches (bubbling, from the element whose box moved silently) to
- * have the rims redraw at the new box without re-rasterising. The name is the whole contract; the
- * phone pill's bubble is the only sender (see app/bottom-pill.tsx). A DOM event, not a handle,
- * so no feature has to import the glass system to talk to it.
+ * The events functional code dispatches when it knows something behind the glass changed. The
+ * names are the whole contract; the phone pill's bubble is the sender of `glass-refresh` (its box
+ * moved silently, see app/bottom-pill.tsx) and the ambient drift sends `glass-ambient-change` (the
+ * orbs are part of the captured backdrop). DOM events, not handles, so no feature has to import
+ * the glass system to talk to it.
  */
 
 /** How long a colour change takes to cross the glass, in ms. The stylesheet interpolates the tint
@@ -45,6 +47,7 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
   const [settings, setSettings] = useState<GlassSettings>(DEFAULT_GLASS_SETTINGS);
   const [ready, setReady] = useState(false);
   const edgeRef = useRef<ReturnType<typeof attachGlassEdge> | null>(null);
+  const rainbowRef = useRef<ReturnType<typeof attachGlassRainbow> | null>(null);
   /** The dials of the latest render, so a re-attach can push them without depending on them. */
   const latest = useRef(settings);
   latest.current = settings;
@@ -80,8 +83,11 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
 
   const { blur, clarity, edge, refraction, radius, dispersion, groups } = settings;
 
-  // The SVG edge map is the sole rim renderer. It needs no device, page capture, or second
-  // compositing surface.
+  /**
+   * The two rim engines. The SVG map bends every pane and paints the rainbow whenever the GPU
+   * engine is not doing it; the WebGPU engine takes the colour split over while the dial is above
+   * zero and hands it back at zero. Both are attached for the shell's lifetime.
+   */
   useEffect(() => {
     const element = shell.current;
     if (!element) return;
@@ -92,9 +98,36 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
     glass.setDispersion(current.dispersion / 100);
     glass.setGroups(current.groups);
     edgeRef.current = glass;
-    return () => { edgeRef.current?.destroy(); edgeRef.current = null; };
+    // The GPU engine keeps the SVG bend underneath its canvas, so the handoff only ever toggles
+    // the split: a device that never arrives still leaves a bent rim, and a stopped GPU never
+    // leaves the band colourless.
+    const rainbow = attachGlassRainbow(
+      element,
+      {
+        blur: current.blur,
+        clarity: current.clarity / 100,
+        offset: current.edge,
+        band: current.refraction,
+        radius: current.radius / 100,
+        dispersion: current.dispersion / 100,
+      },
+      (owned) => glass.setExternalDispersion(owned),
+    );
+    rainbowRef.current = rainbow;
+    return () => {
+      rainbow?.destroy();
+      rainbowRef.current = null;
+      edgeRef.current?.destroy();
+      edgeRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Every dial the band is drawn from. The GPU engine is told as one object — it reads all six,
+  // and the dispersion value alone decides whether it draws at all.
+  useEffect(() => {
+    rainbowRef.current?.setParameters({ blur, clarity: clarity / 100, offset: edge, band: refraction, radius: radius / 100, dispersion: dispersion / 100 });
+  }, [blur, clarity, edge, refraction, radius, dispersion]);
 
   // The ink sampler reads the shell's own luma and writes every pane's ink, shade and glow. The
   // root is handed in, so the engine never has to know the shell's class name.
@@ -108,15 +141,32 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
   // The per-family bases. Absent families follow the dials, so only the overrides travel.
   useEffect(() => {
     edgeRef.current?.setGroups(groups);
+    rainbowRef.current?.setGroups(groups);
   }, [groups]);
   useEffect(() => { edgeRef.current?.setRefraction(refraction); }, [refraction]);
   useEffect(() => { edgeRef.current?.setDispersion(dispersion / 100); }, [dispersion]);
 
+  // The two signals the CSS-driven parts of the scene emit. A pane whose box moved without a DOM
+  // event (the pill's bubble, mid-spring) only needs a redraw; the ambient orbs moving change what
+  // the captured raster holds, so they ask for a new one.
+  useEffect(() => {
+    const onRefresh = () => rainbowRef.current?.refresh();
+    const onAmbient = () => rainbowRef.current?.invalidate();
+    document.addEventListener("glass-refresh", onRefresh);
+    document.addEventListener("glass-ambient-change", onAmbient);
+    return () => {
+      document.removeEventListener("glass-refresh", onRefresh);
+      document.removeEventListener("glass-ambient-change", onAmbient);
+    };
+  }, []);
+
   // The tint and the backdrop's brightness are attributes on one element and raise no event a
-  // scene could hear, so every appearance change re-reads the scene.
+  // scene could hear, so every appearance change re-reads the scene. A new backdrop is also a new
+  // raster: the GPU band samples the page, not the pane's own CSS.
   useEffect(() => {
     setAutoShade(appearance.shade);
     touchScene();
+    rainbowRef.current?.invalidate();
   }, [appearance]);
 
   // A tint change is a transition, not a jump: the stylesheet interpolates the channel variables
@@ -132,6 +182,9 @@ export function useGlassSystem(shell: RefObject<HTMLElement | null>, appearance:
     let sampled = start;
     let frame = requestAnimationFrame(function chase(now) {
       if (now - sampled >= TINT_SAMPLE_MS) { sampled = now; touchScene(); }
+      // The band reads the tint from each pane's computed style at draw time; carry it through
+      // the same transition the stylesheet is running.
+      rainbowRef.current?.refresh();
       if (now - start < TINT_TRANSITION_MS) frame = requestAnimationFrame(chase);
     });
     return () => cancelAnimationFrame(frame);

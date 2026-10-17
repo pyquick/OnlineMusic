@@ -272,6 +272,12 @@ export type GlassEdgeHandle = {
   setRefraction(next: number): void;
   /** The master rainbow, 0–1: how far each colour channel of the rim's bend separates. */
   setDispersion(next: number): void;
+  /**
+   * True while another engine (the WebGPU rainbow) owns the colour split. The bend stays, so a
+   * canvas that covers the band always has the same geometry under it; only the three-way split is
+   * dropped, so the same rainbow is never drawn twice.
+   */
+  setExternalDispersion(on: boolean): void;
   /** Per-family base band/pull; a group's pane reads these instead of the two sliders. */
   setGroups(next: GlassGroupValues): void;
   destroy(): void;
@@ -291,6 +297,7 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
       setOffset() {},
       setRefraction() {},
       setDispersion() {},
+      setExternalDispersion() {},
       setGroups() {},
       destroy() { root.classList.remove("glass-rim-fallback"); },
     };
@@ -309,6 +316,8 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
   let offset = 0;
   /** The master rainbow, 0–1; 0 keeps every pane on the plain colour-blind displacement. */
   let dispersion = 0;
+  /** Set while the WebGPU engine paints the split; the bend itself is kept underneath it. */
+  let externalSplit = false;
   /** Band width in CSS px, before a pane's own multiplier — an absolute size, not a share. */
   let bandPx = 0;
   /** The corner-radius multiplier as last read: a change to it reshapes every map's corners. */
@@ -423,7 +432,9 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     pane.glow = raw;
     const parsed = Number.parseFloat(raw);
     const glow = Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 1;
-    const spread = dispersion * MAX_DISPERSION * glow;
+    // Only panes the GPU actually paints drop their split. An input has no surface canvas, so its
+    // rainbow stays here — otherwise turning the GPU path on would take colour away from it.
+    const spread = externalSplit && pane.element.hasAttribute("data-glass-surface") ? 0 : dispersion * MAX_DISPERSION * glow;
     const scale = pull * 2;
     if (spread > 0.002) {
       useSplit(pane, true);
@@ -582,6 +593,11 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     /** The master rainbow. Only the scale attributes move; the maps are geometry and stay put. */
     setDispersion(next: number) {
       dispersion = Math.min(1, Math.max(0, next));
+      panes.forEach((pane) => applyOptics(pane));
+    },
+    /** The WebGPU engine owns the split now (true) or has handed it back (false). */
+    setExternalDispersion(on: boolean) {
+      externalSplit = on;
       panes.forEach((pane) => applyOptics(pane));
     },
     /** The per-family bases: a pane reads its own family's values instead of the sliders. The

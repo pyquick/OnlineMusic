@@ -86,6 +86,7 @@ export default function BottomPill({ items, current, onSelect, onRaiseChange }: 
    * without re-rasterising; no handle or import crosses between this component and the effect.
    */
   function notifyGlass() {
+    bubbleRef.current?.dispatchEvent(new CustomEvent("glass-refresh", { bubbles: true }));
   }
 
   /**
