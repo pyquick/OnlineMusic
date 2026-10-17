@@ -358,7 +358,6 @@ export function startInkSampler(root: HTMLElement): () => void {
       if (pane.contains(element)) continue;
       // Another pane's glass surface is a canvas, and an empty one reads as black — a pane
       // overlapping one would darken itself over nothing at all, and the whole page would go grey.
-      if (element instanceof HTMLCanvasElement && element.classList.contains("glass-surface")) continue;
       // The overlay paints itself opaque over the page, so its panes never show the media behind
       // it — and the page's panes never show the overlay's.
       if (element.closest(VIDEO_LAYER) !== layer) continue;

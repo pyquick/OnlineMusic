@@ -113,7 +113,7 @@ export default function AppearanceSettings({ glass, onGlass, appearance, onAppea
           <RangeControl label="Blur" value={glass.blur} min={0} max={MAX_GLASS_BLUR} step={GLASS_BLUR_STEP} display={`${glass.blur}px`} onChange={(next) => onGlass({ blur: next })} />
           <RangeControl label="Clarity" value={glass.clarity} min={0} max={100} display={`${glass.clarity}%`} onChange={(next) => onGlass({ clarity: next })} />
           <RangeControl label="Corner radius" value={glass.radius} min={50} max={150} display={`${glass.radius}%`} onChange={(next) => onGlass({ radius: next })} />
-          <p className="settings-hint">Blur frosts what sits behind a pane and clarity is how much of it shows through; both apply live and are saved in this browser. Edge distortion and edge refraction now live per family, in the card below. The rims are bent by the edge map; while Rainbow dispersion is above zero, the band and its colour split are drawn on the GPU.</p>
+          <p className="settings-hint">Blur frosts what sits behind a pane and clarity is how much of it shows through; both apply live and are saved in this browser. Edge distortion and edge refraction now live per family, in the card below. The rims are bent by the edge map without a second renderer or a page capture.</p>
         </div>
       </div>
 
@@ -122,10 +122,7 @@ export default function AppearanceSettings({ glass, onGlass, appearance, onAppea
         <div className="settings-page-body">
           <RangeControl label="Rainbow dispersion" value={glass.dispersion} min={0} max={100} display={`${glass.dispersion}%`} onChange={(next) => onGlass({ dispersion: next })} />
           <p className="settings-hint">The master prism: one dial splits every rim&rsquo;s refraction into its colours, and each pane takes its own share from the measured brightness of what it covers — the brighter the place, the wider the rainbow. Below, every family carries its own edge distortion (how hard the rim bends the backdrop) and edge refraction (how far in the bend reaches); the preview controls sit on a real photograph and answer every slider at once.</p>
-          {/* The stage is a plain backdrop, not a glass pane: it must stay in the GPU engine's
-              page raster even though it sits inside a glass card, which is why it carries the
-              raster marker instead of `data-glass-edge`. */}
-          <div className="lgs-stage" data-glass-raster="" aria-hidden="true">
+          <div className="lgs-stage" data-glass-edge="" aria-hidden="true">
             {/* The backdrop is a photograph, so the samples refract real detail — the fine grain
                 of the rocks, the snow line, the water — and the sampler reads the photo itself for
                 each sample's brightness, which is what scales its rainbow. */}

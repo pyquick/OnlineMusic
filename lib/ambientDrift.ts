@@ -52,9 +52,6 @@ export function startAmbientDrift(): () => void {
   const timer = window.setInterval(() => {
     elapsed = (elapsed + STEP_MS / 1000) % (PERIOD_A * PERIOD_B);
     place(elapsed);
-    // The GPU rim samples a raster of the page; the orbs are part of what sits behind the glass,
-    // so their step is a new backdrop to capture rather than a transform the canvas follows.
-    document.dispatchEvent(new CustomEvent("glass-ambient-change"));
   }, STEP_MS);
 
   return () => window.clearInterval(timer);
