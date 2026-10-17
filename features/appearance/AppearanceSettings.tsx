@@ -121,7 +121,7 @@ export default function AppearanceSettings({ glass, onGlass, appearance, onAppea
         <div className="panel-title"><h3>Liquid glass · per control</h3></div>
         <div className="settings-page-body">
           <RangeControl label="Rainbow dispersion" value={glass.dispersion} min={0} max={100} display={`${glass.dispersion}%`} onChange={(next) => onGlass({ dispersion: next })} />
-          <p className="settings-hint">The master prism: one dial splits every rim&rsquo;s refraction into its colours, and each pane takes its own share from the measured brightness of what it covers — the brighter the place, the wider the rainbow. Below, every family carries its own edge distortion (how hard the rim bends the backdrop) and edge refraction (how far in the bend reaches); the preview controls sit on a real photograph and answer every slider at once.</p>
+          <p className="settings-hint">The master prism: one dial colours every rim with a spectrum, and each pane takes its own share from the measured brightness of what it covers — the brighter the place, the stronger the rainbow. Below, every family carries its own edge distortion (how hard the rim bends the backdrop) and edge refraction (how far in the bend reaches); the preview controls sit on a real photograph and answer every slider at once.</p>
           <div className="lgs-stage" data-glass-edge="" aria-hidden="true">
             {/* The backdrop is a photograph, so the samples refract real detail — the fine grain
                 of the rocks, the snow line, the water — and the sampler reads the photo itself for

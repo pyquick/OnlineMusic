@@ -361,6 +361,10 @@
 /* The bar is a 67px strip: half its height is where the two rims meet, so its shade narrows to
    stay an edge rather than a wash over the whole strip. */
 .glass-rim-fallback .glass-bar{--glass-rim-reach:min(var(--glass-band,0px),20px)}
+/* The rim's prism (lib/glassEdge.ts): a gradient stroke over the pane's own background, under
+   its content. It is painted, not filtered — the three-channel displacement it replaces ran three
+   full-resolution filter passes per pane and halved the frame rate of a page of controls. */
+.glass-rainbow-edge{position:absolute;left:0;top:0;z-index:-1;display:block;pointer-events:none;border-radius:inherit}
 /* The level: dense. Surfaces over content or dark video stay harder to see through, so their text
    keeps its contrast. `[data-glass-edge]` is the same set the two rim engines select — the pane is
    the unit of glass in this studio, and the attribute is what says so. */
