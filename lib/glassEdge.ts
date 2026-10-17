@@ -44,14 +44,15 @@
  * pressed against the edge while the same interior still sits at its own place. The tall panes
  * keep the fold-free bound; only the bar runs at `k ≈ 0.75`.
  *
- * The bend is colour-blind; the Settings master dial paints the rim's prism. A gradient stroke
- * follows the pane's own rounded shape — red at one corner, through the spectrum, to violet at
- * the other — and its opacity is the dial scaled per pane by `--glass-glow`, the brightness the
- * ink sampler measured behind it, so the brightest scenes show the most colour. It is a painted
- * overlay rather than three channel displacements of the backdrop: the old split ran three
- * full-resolution filter passes per pane and halved the frame rate of a page of controls, while
- * the stroke costs a gradient and leaves the bend itself untouched. At zero the stroke is removed
- * and a pane pays nothing for a rainbow it is not showing.
+ * The bend is colour-blind unless asked. The Settings master dial splits it: the backdrop is cut
+ * into its three channels, each displaced by its own scale — red reads shallower than the green,
+ * the blue deeper, which is the order a prism separates them in — and the three images are put
+ * back together with two `feBlend screen` passes. The recombination is exact, because each image
+ * carries a single channel (screen adds them and nothing else), and the flat interior, where the
+ * map is neutral, reassembles into the untouched backdrop. The split is scaled per pane by
+ * `--glass-glow`, the brightness the ink sampler measured behind it, so the brightest scenes
+ * disperse the most. At zero the filter is the same two nodes it has always been, and a pane pays
+ * nothing for a rainbow it is not showing.
  *
  * All of that is Chromium's, because `backdrop-filter` takes a filter reference only there: Safari
  * cannot bend a backdrop, so none of this is attached on an engine that cannot use it. What a pane
@@ -64,20 +65,11 @@ export const MAX_EDGE_OFFSET = 84;
 /** Largest rim band the slider can ask for, in CSS px. */
 export const MAX_BAND_PX = 84;
 /**
- * The colours a prism lays on the rim, in the order light separates them. One stroke with this
- * ramp reads as the same spectrum at every rim, from a diagonal across the pane's box.
+ * The rainbow's ceiling: the deepest per-channel spread, as a share of the rim pull. The master
+ * dial's 0–100% maps onto this, and the pane's measured brightness (`--glass-glow`) scales what is
+ * left. Red displaces by `pull × (1 − spread)`, green by `pull`, blue by `pull × (1 + spread)`.
  */
-const RAINBOW_STOPS: readonly (readonly [number, string])[] = [
-  [0, "#ff5f6d"],
-  [0.18, "#ffb347"],
-  [0.36, "#f7ef6e"],
-  [0.52, "#5ee7a0"],
-  [0.7, "#4dd7ff"],
-  [0.86, "#5b7cff"],
-  [1, "#c56dff"],
-];
-/** How opaque the rim's prism can get at full dispersion and a fully lit scene. */
-const RAINBOW_MAX = 0.55;
+export const MAX_DISPERSION = 0.3;
 /**
  * The seven families a rim can belong to. Each one may carry its own base band/pull, so a card's
  * bend and a word chip's can be tuned apart from the panes': an element names its family in the
@@ -126,6 +118,14 @@ const MAX_BEND = 1 / Math.sqrt(IOR * IOR - 1);
 /** Below this the pane is too small for a rim band to mean anything, and so is the band itself. */
 const MIN_PANE = 24;
 const MIN_BAND = 0.75;
+/**
+ * How long the page must be still before the three-channel split comes back, in ms. The split is
+ * three full-resolution filter passes per pane; while the page is scrolling or a slider is moving,
+ * that is the most expensive thing on screen, and nobody is reading the rainbow mid-motion. The
+ * bend itself stays, so the rim never goes flat — only colourless — and the full effect returns
+ * the moment the gesture settles.
+ */
+const SPLIT_SETTLE_MS = 160;
 
 const NS = "http://www.w3.org/2000/svg";
 
@@ -268,17 +268,9 @@ type Pane = {
    */
   bandCap: number;
   pullCap: number;
-  /** The corner radius last measured, so the prism overlay can follow the pane's own shape. */
-  radius: number;
-  /**
-   * The rim's prism. A gradient stroke over the pane's own background, not a filter: three
-   * channel displacements of the live backdrop were the rainbow's first form, but each one is a
-   * full-resolution filter pass per pane and a page of controls ran at half the frame rate.
-   */
-  rainbow: { svg: SVGSVGElement; rect: SVGRectElement } | null;
-  /** True when the pane was static and we made it a containing block for the overlay. */
-  positioned: boolean;
-  /** The `--glass-glow` the sheen was last applied for, so the poll only redraws on a change. */
+  /** The dispersion branch's three channel displacements, built the first time the rainbow is on. */
+  split: { red: SVGFEDisplacementMapElement; green: SVGFEDisplacementMapElement; blue: SVGFEDisplacementMapElement } | null;
+  /** The `--glass-glow` the scales were last applied for, so the poll only redraws on a change. */
   glow: string;
 };
 
@@ -286,7 +278,7 @@ type Pane = {
 export type GlassEdgeHandle = {
   setOffset(next: number): void;
   setRefraction(next: number): void;
-  /** The master rainbow, 0–1: the opacity of the prism stroke on every rim. */
+  /** The master rainbow, 0–1: how far each colour channel of the rim's bend separates. */
   setDispersion(next: number): void;
   /** Per-family base band/pull; a group's pane reads these instead of the two sliders. */
   setGroups(next: GlassGroupValues): void;
@@ -325,6 +317,9 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
   let offset = 0;
   /** The master rainbow, 0–1; 0 keeps every pane on the plain colour-blind displacement. */
   let dispersion = 0;
+  /** True while the page (or a slider) is in motion, when the split is held off for the frame rate. */
+  let moving = false;
+  let motionTimer = 0;
   /** Band width in CSS px, before a pane's own multiplier — an absolute size, not a share. */
   let bandPx = 0;
   /** The corner-radius multiplier as last read: a change to it reshapes every map's corners. */
@@ -334,95 +329,83 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
   let frame = 0;
 
   /**
-   * Turns the rim's prism on or off. It is a plain SVG stroke over the pane's own background —
-   * the same one for every pane, so it costs a paint, not a full-resolution filter pass — and its
-   * opacity is the master dial scaled by the brightness the sampler measured behind the pane.
+   * Builds the dispersion branch into the pane's filter, or takes it back out. Off, the filter is
+   * the two nodes it has always been, so a pane pays nothing for a rainbow it is not showing. On,
+   * a `feColorMatrix` isolates each channel of the backdrop, each isolated image is displaced by
+   * its own scale, and two `feBlend screen` passes put them back together — exact, because each
+   * displaced image carries one channel and nothing else. The nodes are kept on the pane once
+   * built, so only the first crossing of zero costs the rebuild.
    */
-  function setRainbowOpacity(pane: Pane, opacity: number) {
-    if (opacity <= 0.005) {
-      if (pane.rainbow) {
-        pane.rainbow.svg.remove();
-        pane.rainbow = null;
-      }
-      if (pane.positioned) {
-        pane.element.style.removeProperty("position");
-        pane.positioned = false;
-      }
+  function useSplit(pane: Pane, on: boolean) {
+    if (on === (pane.split !== null)) return;
+    if (!on) {
+      // The branch is gone from the filter, so the pane must stop believing it is there: a
+      // stale non-null `split` made the next turn-on a no-op, and the scales landed on nodes
+      // that had already been detached.
+      pane.split = null;
+      pane.filter.replaceChildren(pane.image, pane.displacement);
       return;
     }
-    if (!pane.rainbow) createRainbow(pane);
-    // An input or a textarea cannot render a child at all; it keeps the plain bend.
-    if (!pane.rainbow) return;
-    pane.rainbow.svg.style.opacity = String(opacity);
-    shapeRainbow(pane);
-  }
-
-  function createRainbow(pane: Pane) {
-    if (pane.element instanceof HTMLInputElement || pane.element instanceof HTMLTextAreaElement) return;
-    // The overlay is absolutely positioned, so the pane must establish the containing block.
-    // Only a static pane is touched, and only until the rainbow is removed again.
-    if (getComputedStyle(pane.element).position === "static") {
-      pane.element.style.position = "relative";
-      pane.positioned = true;
-    }
-    const id = `${pane.filter.id}-ramp`;
-    const overlay = document.createElementNS(NS, "svg");
-    overlay.setAttribute("aria-hidden", "true");
-    overlay.setAttribute("class", "glass-rainbow-edge");
-    // Inline, not only the stylesheet: component rules such as `.glass-button>*` set every child
-    // to `position:relative`, which would turn the engine's overlay into a grid item and push the
-    // control's own glyph out of its cell.
-    overlay.style.cssText = "position:absolute;left:0;top:0;z-index:-1;display:block;pointer-events:none;border-radius:inherit";
-    const defs = document.createElementNS(NS, "defs");
-    const gradient = document.createElementNS(NS, "linearGradient");
-    gradient.setAttribute("id", id);
-    gradient.setAttribute("x1", "0");
-    gradient.setAttribute("y1", "0");
-    gradient.setAttribute("x2", "1");
-    gradient.setAttribute("y2", "1");
-    for (const [offset, color] of RAINBOW_STOPS) {
-      const stop = document.createElementNS(NS, "stop");
-      stop.setAttribute("offset", String(offset));
-      stop.setAttribute("stop-color", color);
-      gradient.append(stop);
-    }
-    defs.append(gradient);
-    const rect = document.createElementNS(NS, "rect");
-    rect.setAttribute("fill", "none");
-    rect.setAttribute("stroke", `url(#${id})`);
-    overlay.append(defs, rect);
-    pane.element.insertBefore(overlay, pane.element.firstChild);
-    pane.rainbow = { svg: overlay, rect };
-  }
-
-  /**
-   * A stroke a share of the bend wide, inset by half its width so its outer edge sits exactly on
-   * the pane's border and its corner radius meets the pane's own. It follows the pane's box on
-   * every measure, so a resize or a family slider reshapes it without rebuilding anything.
-   */
-  function shapeRainbow(pane: Pane) {
-    const rainbow = pane.rainbow;
-    if (!rainbow || pane.width < 1 || pane.height < 1) return;
-    const width = pane.width;
-    const height = pane.height;
-    const stroke = Math.max(1.5, Math.min(8, pane.band * 0.3));
-    const inset = stroke / 2;
-    rainbow.svg.setAttribute("width", String(width));
-    rainbow.svg.setAttribute("height", String(height));
-    rainbow.svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    rainbow.rect.setAttribute("x", String(inset));
-    rainbow.rect.setAttribute("y", String(inset));
-    rainbow.rect.setAttribute("width", String(Math.max(0, width - stroke)));
-    rainbow.rect.setAttribute("height", String(Math.max(0, height - stroke)));
-    rainbow.rect.setAttribute("rx", String(Math.max(0, pane.radius - inset)));
-    rainbow.rect.setAttribute("stroke-width", String(stroke));
+    const channel = (keep: number, name: string) => {
+      const matrix = document.createElementNS(NS, "feColorMatrix");
+      matrix.setAttribute("in", "SourceGraphic");
+      matrix.setAttribute("type", "matrix");
+      // One is kept, the others are zeroed — and the 1 lands in the kept channel's *own*
+      // column: a row is `[r g b a 0]`, so keeping green is `0 1 0 0 0`, never `1 0 0 0 0`.
+      // (That first-column form read red for every channel, and a rim recombined from three
+      // copies of the red channel is a rim that has lost its colour — the glass went grey.)
+      const row = (channel: number) => (channel === keep ? [0, 1, 2].map((c) => (c === channel ? "1" : "0")).join(" ") + " 0 0" : "0 0 0 0 0");
+      // The alpha row *forces opaque* (`0 0 0 0 1`), not preserves: a screen blend adds alphas
+      // (α+α−α²), and on a translucent backdrop — every pane nested in another pane, the bar's
+      // tiles, the pill's bubble — that thickened the milky veil over the band and the glass
+      // went grey. The band's own alpha comes back in one `in` composite at the end, so the
+      // split changes colour and nothing else.
+      matrix.setAttribute("values", `${[0, 1, 2].map(row).join(" ")} 0 0 0 0 1`);
+      matrix.setAttribute("result", `${name}Src`);
+      const displace = document.createElementNS(NS, "feDisplacementMap");
+      displace.setAttribute("in", `${name}Src`);
+      displace.setAttribute("in2", "map");
+      displace.setAttribute("xChannelSelector", "R");
+      displace.setAttribute("yChannelSelector", "G");
+      displace.setAttribute("scale", "0");
+      displace.setAttribute("result", `${name}Disp`);
+      return { matrix, displace };
+    };
+    const red = channel(0, "red");
+    const green = channel(1, "green");
+    const blue = channel(2, "blue");
+    const blend = (first: string, second: string, result: string) => {
+      const node = document.createElementNS(NS, "feBlend");
+      node.setAttribute("in", first);
+      node.setAttribute("in2", second);
+      node.setAttribute("mode", "screen");
+      if (result) node.setAttribute("result", result);
+      return node;
+    };
+    // The colours are recombined on the opaque channel images, and the composite hands the
+    // backdrop's own alpha back (`in` keeps the colour and takes in2's alpha), so the band is as
+    // transparent as the backdrop it refracts.
+    const restore = document.createElementNS(NS, "feComposite");
+    restore.setAttribute("in", "rgbsplit");
+    restore.setAttribute("in2", "SourceGraphic");
+    restore.setAttribute("operator", "in");
+    pane.filter.replaceChildren(
+      pane.image,
+      red.matrix, red.displace,
+      green.matrix, green.displace,
+      blue.matrix, blue.displace,
+      blend("redDisp", "greenDisp", "rgDisp"),
+      blend("rgDisp", "blueDisp", "rgbsplit"),
+      restore,
+    );
+    pane.split = { red: red.displace, green: green.displace, blue: blue.displace };
   }
 
   /**
    * Writes the sliders into the pane's filter. The map is unchanged, so this is the whole
-   * per-move cost of the distortion slider: one `scale` attribute, plus the prism stroke's
-   * opacity. `scale` is twice the pixel offset the rim pulls with, and the map already points at
-   * the sample, so it stays positive.
+   * per-move cost of the distortion slider: one `scale` attribute (three when the rainbow is on).
+   * `scale` is twice the pixel offset the rim pulls with, and the map already points at the
+   * sample, so it stays positive.
    *
    * The pull is held to a share of the band, so a sample only ever reads the glass the band
    * covers. Deeper and it would land on the pane's flat interior, folding the rim — that
@@ -441,19 +424,27 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
       // pane would pick up the ancestor's filter — a map built for the ancestor's own geometry,
       // which is the Width-0 sample inversion. The neutral value is the stylesheet's own
       // fallback, so it composes into the backdrop-filter list where `none` would void it.
-      setRainbowOpacity(pane, 0);
       pane.element.style.setProperty("--glass-edge-filter", "saturate(100%)");
       return;
     }
-    // The rim's own prism: the master dial, scaled by the brightness the sampler measured behind
-    // this pane (1 while nothing has measured it yet). It is painted over the background as an
-    // SVG stroke, so it costs a gradient and no filter pass of its own.
+    // The rainbow: the master dial, scaled by the brightness the sampler measured behind this
+    // pane (1 while nothing has measured it yet). Red travels shallower than the green, the blue
+    // deeper — and the band's flat interior, where the map is neutral, reassembles untouched.
     const raw = pane.element.style.getPropertyValue("--glass-glow");
     pane.glow = raw;
     const parsed = Number.parseFloat(raw);
     const glow = Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 1;
-    setRainbowOpacity(pane, dispersion * glow * RAINBOW_MAX);
-    pane.displacement.setAttribute("scale", String(pull * 2));
+    const spread = moving ? 0 : dispersion * MAX_DISPERSION * glow;
+    const scale = pull * 2;
+    if (spread > 0.002) {
+      useSplit(pane, true);
+      pane.split!.red.setAttribute("scale", String(scale * (1 - spread)));
+      pane.split!.green.setAttribute("scale", String(scale));
+      pane.split!.blue.setAttribute("scale", String(scale * (1 + spread)));
+    } else {
+      useSplit(pane, false);
+      pane.displacement.setAttribute("scale", String(scale));
+    }
     pane.element.style.setProperty("--glass-edge-filter", `url(#${pane.filter.id})`);
   }
 
@@ -489,7 +480,7 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     // stylesheet that moved them at runtime would be asking for a map rebuild nobody announced.
     const style = getComputedStyle(element);
     const cap = (name: string) => { const value = Number.parseFloat(style.getPropertyValue(name)); return Number.isFinite(value) && value > 0 ? value : 0; };
-    const pane: Pane = { element, group: groupOf(style), filter, image, displacement, geometry: "", width: 0, height: 0, band: 0, radius: 0, scale: Math.max(1, scale), bandCap: cap("--glass-band-cap"), pullCap: cap("--glass-pull-cap"), rainbow: null, positioned: false, glow: "" };
+    const pane: Pane = { element, group: groupOf(style), filter, image, displacement, geometry: "", width: 0, height: 0, band: 0, scale: Math.max(1, scale), bandCap: cap("--glass-band-cap"), pullCap: cap("--glass-pull-cap"), split: null, glow: "" };
     sizes.observe(element);
     applyOptics(pane);
     return pane;
@@ -500,12 +491,6 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     // Neutral, not removed: an element losing its marker while still inside a glass ancestor
     // must not fall back to inheriting that ancestor's map.
     pane.element.style.setProperty("--glass-edge-filter", "saturate(100%)");
-    pane.rainbow?.svg.remove();
-    pane.rainbow = null;
-    if (pane.positioned) {
-      pane.element.style.removeProperty("position");
-      pane.positioned = false;
-    }
     pane.filter.remove();
   }
 
@@ -528,7 +513,6 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     pane.band = band;
     if (width < MIN_PANE || height < MIN_PANE || band < MIN_BAND) {
       pane.geometry = "";
-      if (pane.rainbow) pane.rainbow.svg.style.opacity = "0";
       return;
     }
     // The computed radius is only read when the key changes: it costs a style flush, and the
@@ -541,8 +525,6 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
       parseRadius(style.borderBottomRightRadius, limit),
       parseRadius(style.borderBottomLeftRadius, limit),
     );
-    pane.radius = radius;
-    shapeRainbow(pane);
     const key = `${width}x${height}x${radius.toFixed(2)}x${band.toFixed(2)}`;
     if (key === pane.geometry) return;
     const uri = mapCache.get(key) ?? buildMap(width, height, radius, band);
@@ -583,9 +565,34 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     });
   }
 
+  /**
+   * Holds the colour split off while the page or a slider is moving, then puts it back once the
+   * gesture has been still for `SPLIT_SETTLE_MS`. Only the split branch is touched: the bend keeps
+   * drawing, so the rim is never flat, and the full effect returns unchanged after the motion.
+   */
+  function holdRainbow() {
+    if (dispersion <= 0) return;
+    if (!moving) {
+      moving = true;
+      panes.forEach((pane) => applyOptics(pane));
+    }
+    if (motionTimer) window.clearTimeout(motionTimer);
+    motionTimer = window.setTimeout(() => {
+      motionTimer = 0;
+      moving = false;
+      panes.forEach((pane) => applyOptics(pane));
+    }, SPLIT_SETTLE_MS);
+  }
+
   const mutations = new MutationObserver(schedule);
   mutations.observe(root, { childList: true, subtree: true });
   window.addEventListener("resize", schedule);
+  window.addEventListener("resize", holdRainbow);
+  // Capture, because an inner scroller's scroll does not bubble — and wheel/touch cover the
+  // gesture before the first scroll event lands.
+  document.addEventListener("scroll", holdRainbow, { passive: true, capture: true });
+  window.addEventListener("wheel", holdRainbow, { passive: true });
+  window.addEventListener("touchmove", holdRainbow, { passive: true });
   // The dispersion gain is measured by the ink sampler on its own 250ms clock and announced by
   // nothing the engine would hear, so it is polled — a handful of inline-style reads.
   const glowPoll = window.setInterval(syncGlow, 400);
@@ -593,6 +600,7 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
 
   return {
     setOffset(next: number) {
+      holdRainbow();
       offset = Math.max(0, Math.min(MAX_EDGE_OFFSET, next));
       panes.forEach(applyOptics);
     },
@@ -602,6 +610,7 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
      * canvases rather than the frame.
      */
     setRefraction(next: number) {
+      holdRainbow();
       bandPx = Math.max(0, Math.min(MAX_BAND_PX, next));
       panes.forEach((pane) => {
         measure(pane);
@@ -611,11 +620,13 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     /** The master rainbow. Only the scale attributes move; the maps are geometry and stay put. */
     setDispersion(next: number) {
       dispersion = Math.min(1, Math.max(0, next));
+      holdRainbow();
       panes.forEach((pane) => applyOptics(pane));
     },
     /** The per-family bases: a pane reads its own family's values instead of the sliders. The
         band lives inside the map, so this redraws like the refraction slider does. */
     setGroups(next: GlassGroupValues) {
+      holdRainbow();
       groups = { ...next };
       panes.forEach((pane) => {
         measure(pane);
@@ -624,10 +635,15 @@ export function attachGlassEdge(root: HTMLElement): GlassEdgeHandle {
     },
     destroy() {
       if (frame) window.cancelAnimationFrame(frame);
+      if (motionTimer) window.clearTimeout(motionTimer);
       window.clearInterval(glowPoll);
       mutations.disconnect();
       sizes.disconnect();
       window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", holdRainbow);
+      document.removeEventListener("scroll", holdRainbow, true);
+      window.removeEventListener("wheel", holdRainbow);
+      window.removeEventListener("touchmove", holdRainbow);
       panes.forEach(destroyPane);
       panes.clear();
       mapCache.clear();
